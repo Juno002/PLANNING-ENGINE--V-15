@@ -1,0 +1,204 @@
+/**
+ * 🎯 RESOLUCIÓN DEL ESTADO EFECTIVO DE DUTY
+ *
+ * Este módulo determina el rol efectivo de un representante en un día/turno específico,
+ * considerando el plan base, incidencias y eventos de swap.
+ *
+ * ORDEN DE PRECEDENCIA:
+ * 1. Plan base (WeeklyPlan)
+ * 2. Incidencias bloqueantes (VACACIONES, LICENCIA)
+ * 3. Swaps/Covers/Doubles (eventos operacionales)
+ *
+ * Ver SWAP_RULES.md para reglas completas.
+ */
+
+import { ISODate, ShiftType, WeeklyPlan, SwapEvent, Incident, RepresentativeId, Representative } from '../types'
+import { resolveIncidentDates } from '../incidents/resolveIncidentDates'
+import { DayInfo } from '../calendar/types'
+
+export type EffectiveDutyRole =
+  | 'BASE' // Trabaja según plan base, sin modificaciones
+  | 'COVERING' // Cubre a alguien (entra a reemplazar)
+  | 'COVERED' // Es cubierto (sale del turno)
+  | 'DOUBLE' // Hace turno adicional (suma a su carga)
+  | 'SWAPPED_IN' // Trabaja por intercambio (entra al turno por SWAP)
+  | 'SWAPPED_OUT' // No trabaja por intercambio (sale del turno por SWAP)
+  | 'NONE' // No trabaja (OFF, ausencia, etc.)
+
+export interface EffectiveDutyResult {
+  shouldWork: boolean
+  role: EffectiveDutyRole
+  reason?: string // Semantic reason e.g., VACACIONES, AUSENCIA
+  partnerId?: RepresentativeId // The other person in the transaction
+}
+
+export function resolveEffectiveDuty(
+  weeklyPlan: WeeklyPlan,
+  swaps: SwapEvent[],
+  incidents: Incident[],
+  date: ISODate,
+  shift: ShiftType,
+  representativeId: string,
+  allCalendarDays: DayInfo[],
+  representatives: Representative[]
+): EffectiveDutyResult {
+  // ===============================================
+  // 1. PLAN BASE: Determinar asignación original
+  // ===============================================
+  const agent = weeklyPlan.agents.find(
+    a => a.representativeId === representativeId
+  )
+  const baseAssignment = agent?.days[date]?.assignment
+
+  const baseWorks =
+    baseAssignment?.type === 'BOTH' ||
+    (baseAssignment?.type === 'SINGLE' && baseAssignment.shift === shift)
+
+  // ===============================================
+  // 2. INCIDENCIAS BLOQUEANTES: Verificar disponibilidad
+  // ===============================================
+  const representative = representatives.find(r => r.id === representativeId)
+
+  // 🔒 DEFENSIVE: Si no encontramos el representante, algo está mal
+  if (!representative) {
+    console.warn(
+      `[resolveEffectiveDuty] Representative ${representativeId} not found. This may cause incorrect vacation calculations.`
+    )
+  }
+
+  const blockingIncident = incidents.find(i => {
+    if (i.representativeId !== representativeId) return false
+    if (!['VACACIONES', 'LICENCIA'].includes(i.type)) return false
+
+    const resolved = resolveIncidentDates(
+      i,
+      allCalendarDays,
+      representative // Puede ser undefined, pero resolveIncidentDates tiene fallback
+    )
+
+    // 🔒 COMPREHENSIVE BLOCKING LOGIC
+    // Block if the date is:
+    // 1. Explicitly in the vacation dates list (working days counted)
+    if (resolved.dates.includes(date)) return true
+
+    // 2. Within the vacation period but not counted (holidays, gaps)
+    // We block from start until the day BEFORE returnDate
+    if (i.type === 'VACACIONES' && resolved.start && resolved.returnDate) {
+      if (date >= resolved.start && date < resolved.returnDate) {
+        // This day is within the vacation period, block it
+        return true
+      }
+    }
+
+    // Same logic for LICENCIA
+    if (i.type === 'LICENCIA' && resolved.start && resolved.returnDate) {
+      if (date >= resolved.start && date < resolved.returnDate) {
+        return true
+      }
+    }
+
+    return false
+  })
+
+  if (blockingIncident) {
+    return {
+      shouldWork: false,
+      role: 'NONE',
+      reason: blockingIncident.type,
+    }
+  }
+
+  const absenceIncident = incidents.find(i => {
+    if (i.representativeId !== representativeId) return false
+    if (i.type !== 'AUSENCIA') return false
+
+    const resolved = resolveIncidentDates(
+      i,
+      allCalendarDays,
+      representative
+    )
+    return resolved.dates.includes(date)
+  })
+
+  if (absenceIncident && baseWorks) {
+    return {
+      shouldWork: false, // Although planned, didn't work
+      role: 'NONE',
+      reason: 'AUSENCIA',
+    }
+  }
+
+  // ===============================================
+  // 3. EVENTOS DE SWAP: Aplicar modificaciones
+  // ===============================================
+  const relevantSwaps = swaps.filter(s => s.date === date)
+
+  for (const s of relevantSwaps) {
+    if (s.type === 'COVER' && s.shift === shift) {
+      if (s.fromRepresentativeId === representativeId) {
+        return {
+          shouldWork: false,
+          role: 'COVERED',
+          partnerId: s.toRepresentativeId,
+        }
+      }
+      if (s.toRepresentativeId === representativeId) {
+        return {
+          shouldWork: true,
+          role: 'COVERING',
+          partnerId: s.fromRepresentativeId,
+        }
+      }
+    }
+
+    if (s.type === 'DOUBLE' && s.shift === shift) {
+      if (s.representativeId === representativeId) {
+        return { shouldWork: true, role: 'DOUBLE' }
+      }
+    }
+
+    if (s.type === 'SWAP') {
+      if (s.fromRepresentativeId === representativeId) {
+        if (s.fromShift === shift) {
+          return {
+            shouldWork: false,
+            role: 'SWAPPED_OUT',
+            partnerId: s.toRepresentativeId,
+          }
+        }
+        if (s.toShift === shift) {
+          return {
+            shouldWork: true,
+            role: 'SWAPPED_IN',
+            partnerId: s.toRepresentativeId,
+          }
+        }
+      }
+      if (s.toRepresentativeId === representativeId) {
+        if (s.toShift === shift) {
+          return {
+            shouldWork: false,
+            role: 'SWAPPED_OUT',
+            partnerId: s.fromRepresentativeId,
+          }
+        }
+        if (s.fromShift === shift) {
+          return {
+            shouldWork: true,
+            role: 'SWAPPED_IN',
+            partnerId: s.fromRepresentativeId,
+          }
+        }
+      }
+    }
+  }
+
+  // ===============================================
+  // 4. FALLBACK: Usar plan base
+  // ===============================================
+  if (baseWorks) {
+    return { shouldWork: true, role: 'BASE' }
+  }
+
+  return { shouldWork: false, role: 'NONE' }
+}

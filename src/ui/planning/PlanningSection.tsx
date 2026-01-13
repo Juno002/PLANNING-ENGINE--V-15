@@ -1,0 +1,663 @@
+/**
+ * ⚠️ HARDENED VIEW - PLANNING SECTION
+ *
+ * This is the main container for the weekly planning grid and its associated
+ * controls and panels. Its primary responsibilities are:
+ * - Managing the active view state (e.g., 'DAY' or 'NIGHT' shift).
+ * - Orchestrating user interactions (navigation, modal triggers, overrides).
+ * - Consuming domain hooks (`useWeeklyPlan`, `useCoverage`) and passing the
+ *   derived state down to presentational components.
+ * - Enforcing the contract of "existence" vs. "state" by correctly filtering
+ *   the representatives list for the view.
+ */
+'use client'
+
+import React, { useMemo, useState, useEffect } from 'react'
+import { PlanView } from './PlanView'
+import {
+  DayInfo,
+  CoverageRule,
+  ShiftType,
+  ISODate,
+  IncidentInput,
+  ResolvedCoverage,
+  Representative,
+  ShiftAssignment,
+  WeeklyPresence,
+  Incident,
+  SwapEvent,
+} from '../../domain/types'
+import { CalendarDayModal } from './CalendarDayModal'
+import { SwapModal } from './SwapModal'
+import { CoverageRulesPanel } from '../coverage/CoverageRulesPanel'
+import { CoverageRuleModal } from '../coverage/CoverageRuleModal'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useAppStore } from '@/store/useAppStore'
+import { useWeeklyPlan } from '../../hooks/useWeeklyPlan'
+
+import { useWeekNavigator } from '@/hooks/useWeekNavigator'
+import { useEditMode } from '@/hooks/useEditMode'
+import { resolveCoverage } from '@/domain/planning/resolveCoverage'
+import { CoverageChart } from '../coverage/CoverageChart'
+import { CoverageEmptyState } from '../coverage/CoverageEmptyState'
+import { getEffectiveAssignmentsForPlanner } from '@/application/ui-adapters/getEffectiveAssignmentsForPlanner'
+import {
+  getEffectiveDailyCoverage,
+  EffectiveCoverageResult,
+} from '@/application/ui-adapters/getEffectiveDailyCoverage'
+import * as humanize from '@/application/presenters/humanize'
+import { format, parseISO } from 'date-fns'
+import { HelpPanel } from '../components/HelpPanel'
+import { resolveIncidentDates } from '@/domain/incidents/resolveIncidentDates'
+
+// ⚠️ CANONICAL RULE: Identity vs. Operation
+// This function is the single source of truth for deciding if a representative
+// "belongs" to a shift within a given week. It ONLY consults the base plan.
+// It must NOT consider overrides, availability, or any other operational data.
+// This function determines if a representative should be visible in the current shift view.
+// It includes them if:
+// 1. Their BASE shift matches the current view (Identity).
+// 2. They have an assignment in this shift this week (Operation/Cross-coverage).
+function belongsToShiftThisWeek(
+  agentPlan: WeeklyPresence,
+  weekDays: DayInfo[],
+  shift: ShiftType,
+  baseShift: ShiftType // Added baseShift parameter
+): boolean {
+  // 1. Identity Check: If their base shift matches, they always belong.
+  if (baseShift === shift) return true
+
+  // 2. Operation Check: If they have a specific assignment for this shift (e.g. covering).
+  return weekDays.some(day => {
+    const assignment = agentPlan.days[day.date]?.assignment
+    if (!assignment) return false
+    if (assignment.type === 'BOTH') return true
+    if (assignment.type === 'SINGLE' && assignment.shift === shift) return true
+    return false
+  })
+}
+
+export function PlanningSection() {
+  const {
+    representatives,
+    coverageRules,
+    planningAnchorDate,
+    isLoading,
+    addOrUpdateCoverageRule,
+    removeCoverageRule,
+    addOrUpdateSpecialDay,
+    removeSpecialDay,
+    setPlanningAnchorDate,
+    incidents,
+    swaps,
+    addIncident,
+    showMixedShiftConfirmModal,
+    allCalendarDaysForRelevantMonths,
+    pushUndo,
+  } = useAppStore(s => ({
+    representatives: s.representatives ?? [],
+    coverageRules: s.coverageRules,
+    planningAnchorDate: s.planningAnchorDate,
+    isLoading: s.isLoading,
+    addOrUpdateCoverageRule: s.addOrUpdateCoverageRule,
+    removeCoverageRule: s.removeCoverageRule,
+    addOrUpdateSpecialDay: s.addOrUpdateSpecialDay,
+    removeSpecialDay: s.removeSpecialDay,
+    setPlanningAnchorDate: s.setPlanningAnchorDate,
+    incidents: s.incidents,
+    addIncident: s.addIncident,
+    showMixedShiftConfirmModal: s.showMixedShiftConfirmModal,
+    swaps: s.swaps,
+    allCalendarDaysForRelevantMonths: s.allCalendarDaysForRelevantMonths,
+    pushUndo: s.pushUndo,
+  }))
+
+  const activeRepresentatives = useMemo(
+    () => representatives.filter(rep => rep.isActive !== false),
+    [representatives]
+  )
+
+  const { mode } = useEditMode()
+
+  // --- TIME SOVEREIGN ---
+  const {
+    weekDays,
+    label: weekLabel,
+    isCurrentWeek,
+    handlePrevWeek,
+    handleNextWeek,
+    handleGoToday,
+  } = useWeekNavigator(planningAnchorDate, setPlanningAnchorDate)
+  // --- END TIME SOVEREIGN ---
+
+  const { weeklyPlan } = useWeeklyPlan(weekDays) // Consumes weekDays
+
+  const [activeShift, setActiveShift] = useState<ShiftType>('DAY')
+  const [editingDay, setEditingDay] = useState<DayInfo | null>(null)
+  const [editingRule, setEditingRule] = useState<CoverageRule | null>(null)
+  const [isCreatingRule, setIsCreatingRule] = useState(false)
+  const [swapModalState, setSwapModalState] = useState<{
+    isOpen: boolean
+    repId: string | null
+    date: ISODate | null
+    shift: ShiftType | null
+    existingSwap: SwapEvent | null
+  }>({ isOpen: false, repId: null, date: null, shift: null, existingSwap: null })
+
+  const { showConfirm } = useAppStore(s => ({
+    showConfirm: s.showConfirm,
+  }))
+
+  const togglePlanOverride = async (
+    representativeId: string,
+    date: ISODate
+  ) => {
+    if (!weeklyPlan) return
+    const rep = representatives.find(r => r.id === representativeId)
+    if (!rep) return
+
+    // 🔒 VALIDATION: Block overrides during vacation/license periods
+    // Check if there's an active VACACIONES or LICENCIA incident for this representative
+    const blockingIncident = incidents.find(i => {
+      if (i.representativeId !== representativeId) return false
+      if (!['VACACIONES', 'LICENCIA'].includes(i.type)) return false
+
+      const resolved = resolveIncidentDates(i, allCalendarDaysForRelevantMonths, rep)
+
+      // Check if date is within the vacation range (including return date)
+      // We block from start until the day BEFORE return (returnDate is first working day)
+      if (resolved.start && resolved.returnDate) {
+        return date >= resolved.start && date < resolved.returnDate
+      }
+
+      return false
+    })
+
+    if (blockingIncident) {
+      // Silently ignore the click - the cell should appear disabled
+      return
+    }
+
+    const agentPlan = weeklyPlan.agents.find(
+      a => a.representativeId === representativeId
+    )
+    const dayPresence = agentPlan?.days[date]
+
+    const existingOverride = incidents.find(
+      i =>
+        i.representativeId === representativeId &&
+        i.startDate === date &&
+        i.type === 'OVERRIDE'
+    ) as (Incident & { previousAssignment?: ShiftAssignment }) | undefined
+
+    if (existingOverride) {
+      // This is removing an existing override.
+      // The `undo` action will restore it by re-adding the original `existingOverride` object.
+      useAppStore.setState(state => {
+        state.incidents = state.incidents.filter(i => i.id !== existingOverride.id)
+
+        state.swaps = state.swaps.filter(swap => {
+          if (swap.date !== date) return true;
+          return !(
+            ('representativeId' in swap && swap.representativeId === representativeId) ||
+            ('fromRepresentativeId' in swap && swap.fromRepresentativeId === representativeId) ||
+            ('toRepresentativeId' in swap && swap.toRepresentativeId === representativeId)
+          );
+        });
+
+      })
+      pushUndo({
+        label: `Reaplicar cambio de turno de ${rep.name}`,
+        undo: () => {
+          useAppStore.setState(state => {
+            state.incidents.push(existingOverride);
+          })
+        },
+      })
+      return
+    }
+
+    // Creating a new override
+    const previousAssignment = dayPresence?.assignment ?? { type: 'NONE' }
+    let finalAssignment: ShiftAssignment | null
+
+    if (previousAssignment?.type === 'BOTH') {
+      finalAssignment = await showMixedShiftConfirmModal(
+        representativeId,
+        date,
+        activeShift
+      )
+      if (finalAssignment === null) return
+    } else {
+      const isCurrentlyWorking =
+        previousAssignment.type === 'SINGLE' &&
+        previousAssignment.shift === activeShift
+      finalAssignment = isCurrentlyWorking
+        ? { type: 'NONE' }
+        : { type: 'SINGLE', shift: activeShift }
+    }
+
+    const incidentInput: IncidentInput = {
+      representativeId,
+      startDate: date,
+      type: 'OVERRIDE',
+      duration: 1,
+      assignment: finalAssignment,
+      previousAssignment,
+    }
+
+    // Since we're not confirming, we add the incident directly.
+    const result = await addIncident(incidentInput, true); // pass true to skip confirmation
+
+    if (result.ok) {
+      pushUndo({
+        label: `Deshacer cambio de turno de ${rep.name}`,
+        undo: () => {
+          useAppStore.setState(state => {
+            state.incidents = state.incidents.filter(i => i.id !== result.newId);
+
+            state.swaps = state.swaps.filter(swap => {
+              if (swap.date !== date) return true;
+              const repInvolved =
+                ('representativeId' in swap && swap.representativeId === representativeId) ||
+                ('fromRepresentativeId' in swap && swap.fromRepresentativeId === representativeId) ||
+                ('toRepresentativeId' in swap && swap.toRepresentativeId === representativeId);
+              return !repInvolved;
+            });
+          });
+        },
+      })
+    }
+  }
+
+  const handleCellContextMenu = (
+    repId: string,
+    date: ISODate,
+    e: React.MouseEvent
+  ) => {
+    e.preventDefault();
+    const existingSwap = swaps.find(swap => {
+      if (swap.date !== date) return false;
+      if (swap.type === 'COVER') {
+        return (swap.fromRepresentativeId === repId || swap.toRepresentativeId === repId) && swap.shift === activeShift;
+      }
+      if (swap.type === 'DOUBLE') {
+        return swap.representativeId === repId && swap.shift === activeShift;
+      }
+      if (swap.type === 'SWAP') {
+        return swap.fromRepresentativeId === repId || swap.toRepresentativeId === repId;
+      }
+      return false;
+    });
+
+    setSwapModalState({
+      isOpen: true,
+      repId,
+      date,
+      shift: activeShift,
+      existingSwap: existingSwap || null,
+    });
+  };
+
+  const assignmentsMap = useMemo(() => {
+    if (!weeklyPlan) return {}
+    return getEffectiveAssignmentsForPlanner(
+      weeklyPlan,
+      swaps,
+      incidents,
+      allCalendarDaysForRelevantMonths,
+      representatives
+    )
+  }, [
+    weeklyPlan,
+    swaps,
+    incidents,
+    allCalendarDaysForRelevantMonths,
+    representatives,
+  ])
+
+  const agentsToRender = useMemo(() => {
+    if (!weeklyPlan) return []
+
+    const planMap = new Map(
+      weeklyPlan.agents.map(a => [a.representativeId, a])
+    )
+
+    return activeRepresentatives.filter(rep => {
+      const agentPlan = planMap.get(rep.id)
+      if (!agentPlan) return false
+
+      return belongsToShiftThisWeek(
+        agentPlan,
+        weekDays,
+        activeShift,
+        rep.baseShift
+      )
+    })
+  }, [weeklyPlan, weekDays, activeShift, activeRepresentatives])
+
+  const coverageData = useMemo(() => {
+    if (!weeklyPlan) return {}
+    const data: Record<ISODate, EffectiveCoverageResult> = {}
+
+    weekDays.forEach(day => {
+      const result = getEffectiveDailyCoverage(
+        weeklyPlan,
+        swaps,
+        coverageRules,
+        day.date,
+        incidents,
+        allCalendarDaysForRelevantMonths,
+        representatives
+      )
+      data[day.date] = result[activeShift]
+    })
+    return data
+  }, [weeklyPlan, swaps, coverageRules, weekDays, activeShift])
+
+  const hasAnyCoverageRule = useMemo(() => {
+    return Object.values(coverageData).some(d => d.required > 0)
+  }, [coverageData])
+
+  const shiftTabStyle = (isActive: boolean) => ({
+    padding: '8px 16px',
+    cursor: 'pointer',
+    border: 'none',
+    borderBottom: isActive
+      ? '2px solid hsl(0, 0%, 13%)'
+      : '2px solid transparent',
+    color: isActive ? '#111827' : '#4b5563',
+    fontWeight: isActive ? 600 : 500,
+    background: 'transparent',
+    fontSize: '16px',
+    marginRight: '10px',
+  })
+
+  if (isLoading || !weekDays || weekDays.length === 0) {
+    return (
+      <div style={{ padding: '40px', fontFamily: 'sans-serif', color: '#555' }}>
+        Cargando planificación...
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          marginBottom: '25px',
+          padding: '16px 20px',
+          background: '#FFFFFF',
+          borderRadius: '12px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          border: `1px solid ${mode === 'ADMIN_OVERRIDE' ? '#f59e0b' : '#e5e7eb'
+            }`,
+          height: '74px',
+          boxSizing: 'border-box',
+          transition: 'border-color 0.3s ease',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ margin: 0, fontWeight: 600, fontSize: '18px' }}>
+              Planificación
+            </h2>
+            <HelpPanel
+              title="¿Cómo usar el planner?"
+              points={[
+                'Click en una celda para cambiar el turno del agente',
+                'Click derecho para gestionar swaps y coberturas',
+                'El gráfico lateral muestra la cobertura requerida vs actual',
+              ]}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handlePrevWeek}
+              style={{
+                padding: '8px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                background: 'white',
+                lineHeight: 1,
+              }}
+            >
+              &lt;
+            </button>
+            <div
+              style={{
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#374151',
+                width: '280px',
+                textAlign: 'center',
+              }}
+            >
+              {weekLabel}
+            </div>
+            <button
+              onClick={handleNextWeek}
+              style={{
+                padding: '8px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                background: 'white',
+                lineHeight: 1,
+              }}
+            >
+              &gt;
+            </button>
+            {!isCurrentWeek && (
+              <button
+                onClick={handleGoToday}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  background: 'white',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                }}
+              >
+                Semana Actual
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <div
+          style={{
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div>
+            <button
+              style={shiftTabStyle(activeShift === 'DAY')}
+              onClick={() => setActiveShift('DAY')}
+            >
+              Turno Día
+            </button>
+            <button
+              style={shiftTabStyle(activeShift === 'NIGHT')}
+              onClick={() => setActiveShift('NIGHT')}
+            >
+              Turno Noche
+            </button>
+          </div>
+          <button
+            onClick={() =>
+              setSwapModalState({
+                isOpen: true,
+                repId: null,
+                date: planningAnchorDate,
+                shift: activeShift,
+                existingSwap: null,
+              })
+            }
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: 600,
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+            </svg>
+            Gestionar Cambios
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={weeklyPlan ? weeklyPlan.weekStart + activeShift : activeShift}
+          initial={{
+            opacity: 0,
+          }}
+          animate={{ opacity: 1 }}
+          exit={{
+            opacity: 0,
+          }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+        >
+          {weeklyPlan ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 340px',
+                gap: '40px',
+                alignItems: 'start',
+              }}
+            >
+              <PlanView
+                weeklyPlan={weeklyPlan}
+                weekDays={weekDays}
+                agents={agentsToRender}
+                activeShift={activeShift}
+                assignmentsMap={assignmentsMap}
+                onCellClick={(repId, date) => togglePlanOverride(repId, date)}
+                onCellContextMenu={handleCellContextMenu}
+                onEditDay={setEditingDay}
+              />
+
+              <aside style={{ position: 'sticky', top: '20px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '24px',
+                  }}
+                >
+                  {hasAnyCoverageRule ? (
+                    <CoverageChart data={coverageData} />
+                  ) : (
+                    <CoverageEmptyState
+                      onCreateRule={() => setIsCreatingRule(true)}
+                    />
+                  )}
+
+                  <CoverageRulesPanel
+                    rules={coverageRules}
+                    onAdd={() => setIsCreatingRule(true)}
+                    onEdit={rule => setEditingRule(rule)}
+                    onDelete={async id => {
+                      const confirmed = await showConfirm({
+                        title: '¿Eliminar Regla?',
+                        description:
+                          'Esta acción eliminará la regla de cobertura permanentemente.',
+                        intent: 'danger',
+                        confirmLabel: 'Sí, eliminar',
+                      })
+                      if (confirmed) {
+                        removeCoverageRule(id)
+                      }
+                    }}
+                  />
+                </div>
+              </aside>
+            </div>
+          ) : (
+            <div>Cargando plan...</div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {editingDay && (
+        <CalendarDayModal
+          day={editingDay}
+          onClose={() => setEditingDay(null)}
+          onSave={addOrUpdateSpecialDay}
+          onClear={async date => {
+            const confirmed = await showConfirm({
+              title: '¿Quitar Excepción?',
+              description: `Esto restaurará el comportamiento por defecto del día ${date}.`,
+              intent: 'warning',
+            })
+            if (confirmed) {
+              removeSpecialDay(date)
+            }
+          }}
+        />
+      )}
+
+      {(editingRule || isCreatingRule) && (
+        <CoverageRuleModal
+          rule={editingRule ?? undefined}
+          onSave={rule => {
+            addOrUpdateCoverageRule(rule)
+            setEditingRule(null)
+            setIsCreatingRule(false)
+          }}
+          onClose={() => {
+            setEditingRule(null)
+            setIsCreatingRule(false)
+          }}
+        />
+      )}
+
+      {swapModalState.isOpen && weeklyPlan && (
+        <SwapModal
+          weeklyPlan={weeklyPlan}
+          initialDate={swapModalState.date || planningAnchorDate}
+          initialShift={swapModalState.shift || activeShift}
+          initialRepId={swapModalState.repId || undefined}
+          existingSwap={swapModalState.existingSwap || undefined}
+          onClose={() =>
+            setSwapModalState({
+              isOpen: false,
+              repId: null,
+              date: null,
+              shift: null,
+              existingSwap: null,
+            })
+          }
+        />
+      )}
+    </div>
+  )
+}
