@@ -29,7 +29,9 @@ export function CoverageRuleModal({ rule, onSave, onClose }: Props) {
   const [label, setLabel] = useState(rule?.label ?? '')
 
   const handleSubmit = () => {
-    let scope: CoverageRuleScope
+    // Initialize with a default to satisfy TS and handle unexpected types (like WEEKDAY if not implemented in UI)
+    let scope: CoverageRuleScope = { type: 'GLOBAL' }
+
     switch (type) {
       case 'GLOBAL':
         scope = { type: 'GLOBAL' }
