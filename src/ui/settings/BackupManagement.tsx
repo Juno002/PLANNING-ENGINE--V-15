@@ -13,7 +13,7 @@ import {
 import { Download, Upload, Trash2, Save, AlertCircle } from 'lucide-react'
 
 export function BackupManagement() {
-    const { representatives, incidents, calendar, coverageRules, swaps, specialSchedules, historyEvents, auditLog, version, importState } = useAppStore()
+    const { representatives, incidents, calendar, coverageRules, swaps, specialSchedules, effectivePeriods, historyEvents, auditLog, version, importState } = useAppStore()
     const [backups, setBackups] = useState<Array<{ key: string; timestamp: string; size: number }>>([])
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState<string | null>(null)
@@ -35,6 +35,7 @@ export function BackupManagement() {
                 coverageRules,
                 swaps,
                 specialSchedules,
+                effectivePeriods,
                 historyEvents,
                 auditLog,
                 version,
@@ -82,6 +83,7 @@ export function BackupManagement() {
                 coverageRules,
                 swaps,
                 specialSchedules,
+                effectivePeriods,
                 historyEvents,
                 auditLog,
                 version,
