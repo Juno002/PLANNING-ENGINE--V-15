@@ -65,7 +65,7 @@ export function CoverageRuleModal({ rule, onSave, onClose }: Props) {
   }
 
   const modalContentStyle: React.CSSProperties = {
-    background: '#ffffff',
+    background: 'var(--bg-panel)',
     padding: '25px',
     borderRadius: '12px',
     width: '450px',
@@ -191,3 +191,4 @@ export function CoverageRuleModal({ rule, onSave, onClose }: Props) {
     </div>
   )
 }
+

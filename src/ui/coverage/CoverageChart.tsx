@@ -94,7 +94,7 @@ export function CoverageChart({
         }}
       >
         {dates.map(date => {
-          const { actual, required, status } = data[date]
+          const { actual, required, status, reason } = data[date]
 
           const barHeight = maxCoverage > 0 ? (actual / maxCoverage) * 100 : 0
           const isDeficit = status === 'DEFICIT'
@@ -118,11 +118,20 @@ export function CoverageChart({
                 {dayName}, {formattedDate}
               </div>
               <div style={{ fontWeight: 600 }}>
-                Presentes: {actual}
+                Presentes: {actual} | Requerido: {required}
               </div>
-              <div style={{ fontWeight: 600 }}>
-                Requeridos: {required}
-              </div>
+              {reason && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 11,
+                    color: '#cbd5e1',
+                    maxWidth: 200,
+                  }}
+                >
+                  {reason}
+                </div>
+              )}
             </div>
           )
 
