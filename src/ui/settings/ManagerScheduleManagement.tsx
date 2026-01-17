@@ -108,10 +108,10 @@ export function ManagerScheduleManagement() {
                 </div>
 
                 {/* Time Sovereign */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '4px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                    <button onClick={handlePrevWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 8px' }}>&lt;</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                    <button onClick={handlePrevWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 8px', borderRadius: 'var(--radius-sm)' }}>&lt;</button>
                     <span style={{ fontSize: '13px', fontWeight: 500, width: '180px', textAlign: 'center' }}>{weekLabel}</span>
-                    <button onClick={handleNextWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 8px' }}>&gt;</button>
+                    <button onClick={handleNextWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px 8px', borderRadius: 'var(--radius-sm)' }}>&gt;</button>
                 </div>
 
                 <div style={{ marginLeft: '12px' }}>
@@ -120,7 +120,7 @@ export function ManagerScheduleManagement() {
                         style={{
                             background: '#f3f4f6',
                             border: '1px solid #d1d5db',
-                            borderRadius: '6px',
+                            borderRadius: 'var(--radius-md)',
                             padding: '4px 12px',
                             fontSize: '13px',
                             cursor: 'pointer',
@@ -134,7 +134,7 @@ export function ManagerScheduleManagement() {
             </div>
 
             {/* Main Grid */}
-            <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
+            <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-card)', overflow: 'hidden', background: 'white', boxShadow: 'var(--shadow-card)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                     <thead>
                         <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
@@ -269,7 +269,7 @@ export function ManagerScheduleManagement() {
                                         onKeyDown={(e) => e.key === 'Enter' && handleCreateManager()}
                                         style={{
                                             border: '1px solid #d1d5db',
-                                            borderRadius: '6px',
+                                            borderRadius: 'var(--radius-md)',
                                             padding: '4px 8px',
                                             fontSize: '14px',
                                             flex: 1,
@@ -283,7 +283,7 @@ export function ManagerScheduleManagement() {
                                             background: '#16a34a',
                                             color: 'white',
                                             border: 'none',
-                                            borderRadius: '6px',
+                                            borderRadius: 'var(--radius-md)',
                                             width: '32px',
                                             height: '32px',
                                             display: 'flex',
