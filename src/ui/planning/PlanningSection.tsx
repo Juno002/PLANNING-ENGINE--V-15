@@ -49,6 +49,7 @@ import * as humanize from '@/application/presenters/humanize'
 import { format, parseISO } from 'date-fns'
 import { HelpPanel } from '../components/HelpPanel'
 import { resolveIncidentDates } from '@/domain/incidents/resolveIncidentDates'
+import { PromptDialog } from '../components/PromptDialog'
 
 // ⚠️ CANONICAL RULE: Identity vs. Operation
 // This function is the single source of truth for deciding if a representative
@@ -145,6 +146,34 @@ export function PlanningSection({ onNavigateToSettings }: { onNavigateToSettings
     showConfirm: s.showConfirm,
   }))
 
+  // 📝 PROMPT DIALOG STATE
+  const [promptConfig, setPromptConfig] = useState<{
+    open: boolean
+    title: string
+    description: string
+    placeholder?: string
+    optional?: boolean
+    resolve: (value: string | undefined) => void
+  } | null>(null)
+
+  const showConfirmWithInput = (options: {
+    title: string
+    description: string
+    placeholder?: string
+    optional?: boolean
+  }): Promise<string | undefined> => {
+    return new Promise((resolve) => {
+      setPromptConfig({
+        open: true,
+        ...options,
+        resolve: (val) => {
+          setPromptConfig(null)
+          resolve(val)
+        },
+      })
+    })
+  }
+
   const togglePlanOverride = async (
     representativeId: string,
     date: ISODate
@@ -234,6 +263,27 @@ export function PlanningSection({ onNavigateToSettings }: { onNavigateToSettings
         : { type: 'SINGLE', shift: activeShift }
     }
 
+    // 📝 CONTEXT: Ask for explanation logic
+    const requiresExplanation =
+      previousAssignment?.type !== finalAssignment?.type ||
+      (previousAssignment?.type === 'SINGLE' &&
+        finalAssignment?.type === 'SINGLE' &&
+        previousAssignment.shift !== finalAssignment.shift)
+
+    let note: string | undefined
+
+    if (requiresExplanation) {
+      const result = await showConfirmWithInput({
+        title: 'Cambio de día libre',
+        description: '¿Por qué se realiza este cambio?',
+        placeholder: 'Ej: Permiso especial, cita médica, etc.',
+        optional: true,
+      })
+      if (result === undefined) return // User cancelled
+      // Sanitization: Empty strings become undefined
+      note = result.trim() || undefined
+    }
+
     const incidentInput: IncidentInput = {
       representativeId,
       startDate: date,
@@ -241,6 +291,7 @@ export function PlanningSection({ onNavigateToSettings }: { onNavigateToSettings
       duration: 1,
       assignment: finalAssignment,
       previousAssignment,
+      note,
     }
 
     // Since we're not confirming, we add the incident directly.
@@ -400,8 +451,19 @@ export function PlanningSection({ onNavigateToSettings }: { onNavigateToSettings
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h2 style={{ margin: 0, fontWeight: 600, fontSize: '18px' }}>
+            <h2 style={{ margin: 0, fontWeight: 600, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               Planificación
+              <span style={{
+                fontSize: '13px',
+                fontWeight: 500,
+                padding: '2px 8px',
+                borderRadius: '99px',
+                background: activeShift === 'DAY' ? '#fef3c7' : '#e0e7ff',
+                color: activeShift === 'DAY' ? '#b45309' : '#4338ca',
+                border: `1px solid ${activeShift === 'DAY' ? '#fcd34d' : '#c7d2fe'}`
+              }}>
+                {activeShift === 'DAY' ? '🌞 Turno Día' : '🌙 Turno Noche'}
+              </span>
             </h2>
             <HelpPanel
               title="¿Cómo usar el planner?"
@@ -629,6 +691,19 @@ export function PlanningSection({ onNavigateToSettings }: { onNavigateToSettings
               existingSwap: null,
             })
           }
+        />
+      )}
+
+      {/* GLOBAL PROMPT DIALOG */}
+      {promptConfig && (
+        <PromptDialog
+          open={promptConfig.open}
+          title={promptConfig.title}
+          description={promptConfig.description}
+          placeholder={promptConfig.placeholder}
+          optional={promptConfig.optional}
+          onConfirm={(val) => promptConfig.resolve(val)}
+          onCancel={() => promptConfig.resolve(undefined)}
         />
       )}
     </div>

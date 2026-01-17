@@ -27,7 +27,7 @@ export const isExpected = (e: DailyLogEntry) => {
 
     // If absent...
     if (e.logStatus === 'ABSENT') {
-        const justified = ['VACACIONES', 'LICENCIA']
+        const justified = ['VACACIONES', 'LICENCIA', 'JUSTIFICADA']
         // If justified, does NOT count in planned (reduces denominator)
         if (e.details && justified.includes(e.details)) return false
         // If unjustified (ABSENT, TARDINESS implicit), IT COUNTS (we want to see the hole)

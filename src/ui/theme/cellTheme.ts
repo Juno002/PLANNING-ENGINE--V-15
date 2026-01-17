@@ -57,4 +57,11 @@ export const CELL_THEME: Record<VisualVariant, CellTheme> = {
         border: 'hsl(0, 85%, 60%)',
         icon: XCircle,
     },
+
+    ABSENT_JUSTIFIED: {
+        bg: 'hsl(0, 60%, 97%)', // Much lighter red (Almost white-red)
+        fg: 'hsl(0, 60%, 40%)', // Softer text
+        border: 'hsl(0, 60%, 80%)', // Soft border
+        icon: Check, // Semantic "OK"
+    },
 }

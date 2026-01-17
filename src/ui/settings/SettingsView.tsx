@@ -22,7 +22,10 @@ import { AuditEvent } from '@/domain/audit/types'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type SettingsTab = 'equipo' | 'calendario' | 'sistema'
+import { ManagerScheduleManagement } from './ManagerScheduleManagement'
+import { Briefcase } from 'lucide-react'
+
+type SettingsTab = 'equipo' | 'calendario' | 'sistema' | 'gerencia'
 type EquipoSection = 'representatives' | 'demand'
 
 export function SettingsView() {
@@ -243,6 +246,13 @@ export function SettingsView() {
           Equipo y Reglas
         </button>
         <button
+          style={tabStyle(activeTab === 'gerencia')}
+          onClick={() => setActiveTab('gerencia')}
+        >
+          <Briefcase size={16} />
+          Gerencia
+        </button>
+        <button
           style={tabStyle(activeTab === 'calendario')}
           onClick={() => setActiveTab('calendario')}
         >
@@ -304,6 +314,10 @@ export function SettingsView() {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'gerencia' && (
+          <ManagerScheduleManagement />
         )}
 
         {activeTab === 'calendario' && (

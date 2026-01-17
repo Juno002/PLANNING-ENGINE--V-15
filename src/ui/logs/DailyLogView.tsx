@@ -21,6 +21,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useWeeklyPlan } from '@/hooks/useWeeklyPlan'
 import { useWeekNavigator } from '@/hooks/useWeekNavigator'
 import { InlineAlert } from '../components/InlineAlert'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import {
   getEffectiveDailyLogData,
   DailyLogEntry,
@@ -197,6 +198,37 @@ export function DailyLogView() {
   const [duration, setDuration] = useState(1)
   const [customPoints, setCustomPoints] = useState(0)
 
+  // 🛡️ CONFIRM DIALOG STATE
+  const [confirmConfig, setConfirmConfig] = useState<{
+    open: boolean
+    title: string
+    description: string
+    confirmText: string
+    cancelText: string
+    resolve: (value: boolean) => void
+  } | null>(null)
+
+  const showConfirm = (options: {
+    title: string
+    description: string
+    confirmText: string
+    cancelText: string
+  }): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setConfirmConfig({
+        open: true,
+        title: options.title,
+        description: options.description,
+        confirmText: options.confirmText,
+        cancelText: options.cancelText,
+        resolve: (val) => {
+          setConfirmConfig(null)
+          resolve(val)
+        },
+      })
+    })
+  }
+
   // --- Close calendar on outside click ---
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -264,22 +296,24 @@ export function DailyLogView() {
     const activeEntries = activeShift === 'DAY' ? dayEntries : nightEntries
     const repMap = new Map(representatives.map(r => [r.id, r]))
 
+    // 🔴 UX REFINEMENT: Administrative incidents ignore operational shift
+    if (incidentType === 'VACACIONES' || incidentType === 'LICENCIA') {
+      const representativesInShift = representatives
+        .filter(r => r.isActive !== false)
+        // Sort alphabetically to be nice
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+      return {
+        representativesInShift,
+        dayShiftPresent,
+        nightShiftPresent,
+        dayShiftPlanned,
+        nightShiftPlanned,
+      }
+    }
+
     const representativesInShift = activeEntries
-      .filter(e => {
-        // Always show if not OFF
-        if (e.logStatus !== 'OFF') {
-          // For ABSENT status (license/vacation), only show in their base shift
-          if (e.logStatus === 'ABSENT' && e.details && ['VACACIONES', 'LICENCIA'].includes(e.details)) {
-            const rep = repMap.get(e.representativeId)
-            if (rep && rep.baseShift !== e.shift) {
-              return false // Don't show in non-base shift
-            }
-          }
-          return true
-        }
-        // Show OFF only if responsible
-        return e.isResponsible
-      })
+      .filter(e => isExpected(e))
       .map(e => repMap.get(e.representativeId))
       .filter((r): r is Representative => !!r)
 
@@ -401,29 +435,49 @@ export function DailyLogView() {
     )
   }, [selectedRep, logDate, incidentType, duration, incidents, allCalendarDaysForRelevantMonths, isLoading])
 
+  // 🛡️ UX PROTECTION: Avoid zombie states
+  // If the user changes incident type and the selected rep is no longer in the list, clear selection.
   useEffect(() => {
-    if (
-      selectedRep &&
-      !filteredRepresentatives.some(r => r.id === selectedRep.id)
-    ) {
-      resetForm(false)
+    if (!selectedRep) return
+    const stillVisible = representativesInShift.some(r => r.id === selectedRep.id)
+    if (!stillVisible) {
+      setSelectedRep(null)
+      setSearchTerm('')
     }
-  }, [activeShift, selectedRep, filteredRepresentatives, resetForm])
+  }, [incidentType, representativesInShift, selectedRep])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRep) return
 
+    let finalIncidentType = incidentType
+    let details: string | undefined
+
+    // 🟢 INTERSTITIAL CONFIRMATION for ABSENCE
+    if (incidentType === 'AUSENCIA') {
+      const isJustified = await showConfirm({
+        title: 'Ausencia',
+        description: '¿La ausencia es justificada?',
+        confirmText: 'Sí, justificada',
+        cancelText: 'No, injustificada',
+      })
+
+      if (isJustified) {
+        details = 'JUSTIFICADA'
+      }
+    }
+
     const isMultiDay =
-      incidentType === 'LICENCIA' || incidentType === 'VACACIONES'
+      finalIncidentType === 'LICENCIA' || finalIncidentType === 'VACACIONES'
 
     const incidentInput: IncidentInput = {
       representativeId: selectedRep.id,
-      type: incidentType,
+      type: finalIncidentType,
       startDate: logDate,
       duration: isMultiDay ? duration : 1,
-      customPoints: incidentType === 'OTRO' ? customPoints : undefined,
+      customPoints: finalIncidentType === 'OTRO' ? customPoints : undefined,
       note: note.trim() || undefined,
+      details,
     }
     submit(incidentInput, selectedRep)
   }
@@ -487,6 +541,11 @@ export function DailyLogView() {
           <label style={{ ...styles.label, marginBottom: '8px' }}>
             Representantes del Turno
           </label>
+          {(incidentType === 'VACACIONES' || incidentType === 'LICENCIA') && (
+            <div style={{ marginBottom: '8px', fontSize: '12px', color: '#059669', background: '#ecfdf5', padding: '6px 10px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
+              Mostrando <strong>todos</strong> para registro administrativo.
+            </div>
+          )}
           <input
             type="text"
             placeholder="Buscar representante..."
@@ -650,14 +709,13 @@ export function DailyLogView() {
                   onChange={e =>
                     setIncidentType(e.target.value as IncidentType)
                   }
-                  disabled={!selectedRep}
+                // disabled={!selectedRep} <-- REMOVED THIS LINE
                 >
                   <option value="TARDANZA">Tardanza</option>
                   <option value="AUSENCIA">Ausencia</option>
                   <option value="ERROR">Error</option>
                   <option value="OTRO">Otro</option>
                   <option value="LICENCIA">Licencia</option>
-                  <option value="VACACIONES">Vacaciones</option>
                 </select>
               </div>
 
@@ -786,6 +844,20 @@ export function DailyLogView() {
           </div>
         </div>
       </section>
+
+      {/* GLOBAL CONFIRM DIALOG */}
+      {confirmConfig && (
+        <ConfirmDialog
+          open={confirmConfig.open}
+          title={confirmConfig.title}
+          description={confirmConfig.description}
+          intent="warning"
+          confirmLabel={confirmConfig.confirmText}
+          cancelLabel={confirmConfig.cancelText}
+          onConfirm={() => confirmConfig.resolve(true)}
+          onCancel={() => confirmConfig.resolve(false)}
+        />
+      )}
     </div>
   )
 }

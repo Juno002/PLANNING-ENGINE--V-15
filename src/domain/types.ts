@@ -22,6 +22,7 @@ import { HistoryEvent } from '@/store/useAppStore'
 import { SwapEvent, SwapType } from './planning/swap'
 import { ShiftAssignment } from './planning/shiftAssignment'
 import { EffectiveSchedulePeriod } from './planning/effectiveSchedulePeriod'
+import { Manager, ManagerSchedule } from './management/types'
 
 // Re-export ISODate to be available from the root domain types
 export type { ISODate, DayInfo, SpecialDay, DayKind } from './calendar/types'
@@ -48,6 +49,7 @@ export type { AuditEvent }
 export type { SwapEvent, SwapType }
 export type { ShiftAssignment }
 export type { EffectiveSchedulePeriod, WeeklyPattern, DailyDuty } from './planning/effectiveSchedulePeriod'
+export type { Manager, ManagerSchedule, ManagerDuty, ManagerAssignment } from './management/types'
 
 /**
  * Define el alcance de una regla de cobertura.
@@ -99,6 +101,8 @@ export type PlanningBaseState = {
   historyEvents: HistoryEvent[]
   auditLog: AuditEvent[]
   swaps: SwapEvent[]
+  managers: Manager[]
+  managementSchedules: Record<string, ManagerSchedule>
   version: number
 }
 

@@ -32,7 +32,12 @@ export interface EffectiveDutyResult {
   role: EffectiveDutyRole
   reason?: string // Semantic reason e.g., VACACIONES, AUSENCIA
   partnerId?: RepresentativeId // The other person in the transaction
+  source?: 'BASE' | 'OVERRIDE' | 'EFFECTIVE_PERIOD' | 'INCIDENT' | 'SWAP'
+  note?: string
+  details?: string
 }
+
+
 
 export function resolveEffectiveDuty(
   weeklyPlan: WeeklyPlan,
@@ -48,39 +53,86 @@ export function resolveEffectiveDuty(
   // ===============================================
   // 1. EFFECTIVE SCHEDULE PERIOD: ABSOLUTE PRIORITY
   // ===============================================
-  // If an EffectiveSchedulePeriod is active, it REPLACES everything else.
-  // No base plan, no mixProfile, no special schedules - ONLY the period pattern.
   const activePeriod = findActiveEffectivePeriod(effectivePeriods, representativeId, date)
 
   if (activePeriod) {
     const duty = getDutyFromPeriod(activePeriod, date)
+    const isOverride = activePeriod.startDate === activePeriod.endDate
+    const source = isOverride ? 'OVERRIDE' : 'EFFECTIVE_PERIOD'
+    const note = activePeriod.note
 
     // Map DailyDuty to EffectiveDutyResult
     if (duty === 'OFF') {
       return {
         shouldWork: false,
         role: 'NONE',
-        reason: activePeriod.reason || 'Período de horario especial',
+        reason: activePeriod.reason || (isOverride ? 'Día libre asignado manualmente' : 'Período de horario especial'),
+        source,
+        note,
       }
     }
 
     if (duty === 'BOTH') {
-      // Works both shifts
       return {
         shouldWork: true,
         role: 'BASE',
         reason: activePeriod.reason,
+        source,
+        note,
       }
     }
 
     if (duty === 'DAY' || duty === 'NIGHT') {
-      // Works specific shift
       const shouldWork = duty === shift
       return {
         shouldWork,
         role: shouldWork ? 'BASE' : 'NONE',
         reason: activePeriod.reason,
+        source,
+        note,
       }
+    }
+  }
+
+  // ===============================================
+  // 1.5. OVERRIDE INCIDENTS: Manual changes to assignments
+  // ===============================================
+  // Overrides are manual interventions that should take precedence over base plan
+  // but potentially be blocked by vacations? No, usually override implies "I know what I'm doing".
+  // However, the system UI creates overrides to set days OFF or ON.
+  // If we have an override for this date, we respect it ABOVE the base plan.
+
+  const overrideIncident = incidents.find(i =>
+    i.representativeId === representativeId &&
+    i.type === 'OVERRIDE' &&
+    i.startDate === date
+  )
+
+  if (overrideIncident && overrideIncident.assignment) {
+    const assignment = overrideIncident.assignment
+    let overrideRole: EffectiveDutyRole = 'NONE'
+    let shouldWork = false
+
+    if (assignment.type === 'BOTH') {
+      shouldWork = true
+      overrideRole = 'BASE' // Or 'OVERRIDE_WORK'? keeping 'BASE' for now as it means "working standard"
+    } else if (assignment.type === 'SINGLE') {
+      shouldWork = assignment.shift === shift
+      overrideRole = shouldWork ? 'BASE' : 'NONE'
+    } else {
+      // OFF
+      shouldWork = false
+      overrideRole = 'NONE'
+    }
+
+    // If it matches properly, return it.
+    // Note: We return context to help tooltip
+    return {
+      shouldWork,
+      role: overrideRole,
+      reason: 'Manual Override',
+      source: 'OVERRIDE',
+      note: overrideIncident.note
     }
   }
 
@@ -118,21 +170,14 @@ export function resolveEffectiveDuty(
       representative // Puede ser undefined, pero resolveIncidentDates tiene fallback
     )
 
-    // 🔒 COMPREHENSIVE BLOCKING LOGIC
-    // Block if the date is:
-    // 1. Explicitly in the vacation dates list (working days counted)
     if (resolved.dates.includes(date)) return true
 
-    // 2. Within the vacation period but not counted (holidays, gaps)
-    // We block from start until the day BEFORE returnDate
     if (i.type === 'VACACIONES' && resolved.start && resolved.returnDate) {
       if (date >= resolved.start && date < resolved.returnDate) {
-        // This day is within the vacation period, block it
         return true
       }
     }
 
-    // Same logic for LICENCIA
     if (i.type === 'LICENCIA' && resolved.start && resolved.returnDate) {
       if (date >= resolved.start && date < resolved.returnDate) {
         return true
@@ -147,6 +192,7 @@ export function resolveEffectiveDuty(
       shouldWork: false,
       role: 'NONE',
       reason: blockingIncident.type,
+      source: 'INCIDENT',
     }
   }
 
@@ -167,6 +213,9 @@ export function resolveEffectiveDuty(
       shouldWork: false, // Although planned, didn't work
       role: 'NONE',
       reason: 'AUSENCIA',
+      source: 'INCIDENT',
+      details: absenceIncident.details, // Propagate details (e.g., 'JUSTIFICADA')
+      note: absenceIncident.note,
     }
   }
 
@@ -182,6 +231,7 @@ export function resolveEffectiveDuty(
           shouldWork: false,
           role: 'COVERED',
           reason: `Cubierto por ${s.toRepresentativeId}`,
+          source: 'SWAP',
         }
       }
       if (s.toRepresentativeId === representativeId) {
@@ -189,13 +239,14 @@ export function resolveEffectiveDuty(
           shouldWork: true,
           role: 'COVERING',
           reason: `Cubriendo a ${s.fromRepresentativeId}`,
+          source: 'SWAP',
         }
       }
     }
 
     if (s.type === 'DOUBLE' && s.shift === shift) {
       if (s.representativeId === representativeId) {
-        return { shouldWork: true, role: 'DOUBLE', reason: 'Turno adicional' }
+        return { shouldWork: true, role: 'DOUBLE', reason: 'Turno adicional', source: 'SWAP' }
       }
     }
 
@@ -206,6 +257,7 @@ export function resolveEffectiveDuty(
             shouldWork: false,
             role: 'SWAPPED_OUT',
             reason: `Intercambio con ${s.toRepresentativeId}`,
+            source: 'SWAP',
           }
         }
         if (s.toShift === shift) {
@@ -213,6 +265,7 @@ export function resolveEffectiveDuty(
             shouldWork: true,
             role: 'SWAPPED_IN',
             reason: `Intercambio con ${s.toRepresentativeId}`,
+            source: 'SWAP',
           }
         }
       }
@@ -222,6 +275,7 @@ export function resolveEffectiveDuty(
             shouldWork: false,
             role: 'SWAPPED_OUT',
             reason: `Intercambio con ${s.fromRepresentativeId}`,
+            source: 'SWAP',
           }
         }
         if (s.fromShift === shift) {
@@ -229,6 +283,7 @@ export function resolveEffectiveDuty(
             shouldWork: true,
             role: 'SWAPPED_IN',
             reason: `Intercambio con ${s.fromRepresentativeId}`,
+            source: 'SWAP',
           }
         }
       }
@@ -239,8 +294,8 @@ export function resolveEffectiveDuty(
   // 5. FALLBACK: Usar plan base
   // ===============================================
   if (baseWorks) {
-    return { shouldWork: true, role: 'BASE' }
+    return { shouldWork: true, role: 'BASE', source: 'BASE' }
   }
 
-  return { shouldWork: false, role: 'NONE' }
+  return { shouldWork: false, role: 'NONE', source: 'BASE' }
 }

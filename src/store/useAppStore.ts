@@ -18,7 +18,14 @@ import {
   EffectiveSchedulePeriod,
   WeeklyPattern,
   DailyDuty,
+  Manager,
+  ManagerDuty,
+  ManagerSchedule,
 } from '@/domain/types'
+import {
+  createManagementScheduleSlice,
+  ManagementScheduleSlice,
+} from './managementScheduleSlice'
 import { createInitialState, createBaseSchedule } from '@/domain/state'
 import { loadState, saveState } from '@/persistence/storage'
 import {
@@ -100,7 +107,7 @@ export interface HistoryEvent {
 export const DOMAIN_VERSION = 7
 
 // --- Main App State ---
-export type AppState = PlanningBaseState & {
+export type AppState = PlanningBaseState & ManagementScheduleSlice & {
   isLoading: boolean
   planningAnchorDate: ISODate
   allCalendarDaysForRelevantMonths: DayInfo[]
@@ -174,11 +181,19 @@ export type AppState = PlanningBaseState & {
   // Backup/Restore
   exportState: () => PlanningBaseState
   importState: (data: BackupPayload) => { success: boolean; message: string }
+
+  // Manager Actions (Entity Management Only)
+  addManager: (data: Omit<Manager, 'id'>) => void
+  removeManager: (id: string) => void
 }
 
 export const useAppStore = create<AppState>()(
   immer((set, get) => ({
     ...createInitialState(),
+    ...createInitialState(),
+    ...createManagementScheduleSlice(set as any, get as any, {} as any),
+    managers: [],
+    // managementSchedules is initialized by slice or createInitialState
     isLoading: true,
     planningAnchorDate: new Date().toISOString().split('T')[0],
     allCalendarDaysForRelevantMonths: [],
@@ -781,6 +796,37 @@ export const useAppStore = create<AppState>()(
     },
 
     // ===============================================
+    // Manager Actions
+    // ===============================================
+    addManager: data => {
+      set(state => {
+        state.managers.push({
+          id: crypto.randomUUID(),
+          ...data,
+        })
+      })
+    },
+
+    removeManager: id => {
+      set(state => {
+        state.managers = state.managers.filter(m => m.id !== id)
+        // Also clean up schedules? User said "No validaciones cruzadas", but cleaning up is good.
+        // But maybe we want to keep history?
+        // User said: "Si mañana hay historial → se versiona".
+        // Use safest approach: keep schedules for now (audit), or delete?
+        // Logic: "No metemos gerencia en operaciones".
+        // I will keep schedules to be safe, or delete if strictly linked.
+        // User emphasizes "Entity: ManagerSchedule". "managerId".
+        // I'll delete schedules to keep state clean.
+        if (state.managementSchedules[id]) {
+          delete state.managementSchedules[id]
+        }
+      })
+    },
+
+
+
+    // ===============================================
     // Effective Period Actions
     // ===============================================
     addEffectivePeriod: data => {
@@ -904,6 +950,8 @@ export const useAppStore = create<AppState>()(
         effectivePeriods,
         historyEvents,
         auditLog,
+        managers,
+        managementSchedules,
         version,
       } = get()
 
@@ -917,6 +965,8 @@ export const useAppStore = create<AppState>()(
         effectivePeriods,
         historyEvents,
         auditLog,
+        managers,
+        managementSchedules,
         version,
       }
     },
@@ -934,6 +984,8 @@ export const useAppStore = create<AppState>()(
         auditLog: data.auditLog ?? [],
         specialSchedules: data.specialSchedules ?? [],
         effectivePeriods: data.effectivePeriods ?? [],
+        managers: data.managers ?? [],
+        managementSchedules: data.managementSchedules ?? {},
         version: DOMAIN_VERSION,
       }
 
@@ -967,6 +1019,8 @@ export const stateToPersist = (state: AppState): PlanningBaseState => {
     effectivePeriods,
     historyEvents,
     auditLog,
+    managers,
+    managementSchedules,
     version,
   } = state
   return {
@@ -979,6 +1033,8 @@ export const stateToPersist = (state: AppState): PlanningBaseState => {
     effectivePeriods,
     historyEvents,
     auditLog,
+    managers,
+    managementSchedules,
     version,
   }
 }
