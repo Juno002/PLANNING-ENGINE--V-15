@@ -36,8 +36,8 @@ const styles = {
     backgroundColor: 'var(--accent)',
     color: 'white',
     padding: '10px',
-    borderRadius: '6px',
-    fontWeight: 600,
+    borderRadius: 'var(--radius-md)',
+    fontWeight: 'var(--font-weight-semibold)',
     transition: 'all 0.2s ease',
     border: 'none',
     cursor: 'pointer',
@@ -51,32 +51,34 @@ const styles = {
   input: {
     width: '100%',
     border: '1px solid var(--border-strong)',
-    borderRadius: '6px',
+    borderRadius: 'var(--radius-md)',
     padding: '10px 12px',
-    fontSize: '14px',
+    fontSize: 'var(--font-size-base)',
     boxSizing: 'border-box' as React.CSSProperties['boxSizing'],
+    background: 'var(--bg-surface)',
+    color: 'var(--text-main)',
   },
   label: {
     display: 'block',
-    fontSize: '14px',
-    fontWeight: 500,
+    fontSize: 'var(--font-size-base)',
+    fontWeight: 'var(--font-weight-medium)',
     marginBottom: '6px',
     color: 'var(--text-main)',
   },
   listItem: {
     width: '100%',
     textAlign: 'left' as 'left',
-    padding: '8px 12px',
-    borderRadius: '6px',
+    padding: 'var(--space-sm) var(--space-md)',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
     border: 'none',
     background: 'transparent',
-    fontSize: '14px',
+    fontSize: 'var(--font-size-base)',
     color: 'var(--text-main)',
   },
   activeListItem: {
-    background: '#f3f4f6',
-    fontWeight: 600,
+    background: 'var(--bg-subtle)',
+    fontWeight: 'var(--font-weight-semibold)',
   },
 }
 
@@ -502,31 +504,34 @@ export function DailyLogView() {
         display: 'grid',
         gridTemplateColumns: '300px 1fr',
         height: 'calc(100vh - 200px)',
-        gap: '16px',
+        gap: 'var(--space-md)',
         fontFamily: 'sans-serif',
+        background: 'var(--bg-app)',
+        padding: 'var(--space-lg)',
       }}
     >
       <aside
         style={{
           flexShrink: 0,
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '20px',
+          backgroundColor: 'var(--bg-surface)',
+          borderRadius: 'var(--radius-card)',
+          padding: 'var(--space-lg)',
           border: '1px solid var(--border-subtle)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
-          marginBottom: '16px',
+          gap: 'var(--space-md)',
+          marginBottom: 'var(--space-md)',
+          boxShadow: 'var(--shadow-sm)',
         }}
       >
         <div>
           <h3
-            style={{ fontWeight: 500, margin: '0 0 12px 0', color: 'var(--text-main)', fontSize: '13px' }}
+            style={{ fontWeight: 'var(--font-weight-medium)', margin: '0 0 var(--space-md) 0', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}
           >
             Estado de Turnos
           </h3>
           <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}
           >
             <ShiftStatusDisplay
               label="Día"
@@ -546,18 +551,18 @@ export function DailyLogView() {
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <label style={{ ...styles.label, marginBottom: '8px' }}>
+          <label style={{ ...styles.label, marginBottom: 'var(--space-sm)' }}>
             Representantes del Turno
           </label>
           {(incidentType === 'VACACIONES' || incidentType === 'LICENCIA') && (
-            <div style={{ marginBottom: '8px', fontSize: '12px', color: '#059669', background: '#ecfdf5', padding: '6px 10px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
+            <div style={{ marginBottom: 'var(--space-sm)', fontSize: 'var(--font-size-xs)', color: '#059669', background: '#ecfdf5', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid #a7f3d0' }}>
               Mostrando <strong>todos</strong> para registro administrativo.
             </div>
           )}
           <input
             type="text"
             placeholder="Buscar representante..."
-            style={{ ...styles.input, marginBottom: '12px' }}
+            style={{ ...styles.input, marginBottom: 'var(--space-md)' }}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -596,18 +601,19 @@ export function DailyLogView() {
       >
         <div
           style={{
-            backgroundColor: 'white',
+            backgroundColor: 'var(--bg-surface)',
             border: '1px solid var(--border-subtle)',
-            borderRadius: '12px',
-            padding: '16px 20px',
+            borderRadius: 'var(--radius-card)',
+            padding: 'var(--space-md) var(--space-lg)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             height: '74px',
             boxSizing: 'border-box',
+            boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <h2 style={{ margin: '0 0 32px 0', fontWeight: 700, fontSize: '16px' }}>
+          <h2 style={{ margin: '0 0 var(--space-xl) 0', fontWeight: 'var(--font-weight-bold)', fontSize: 'var(--font-size-md)', color: 'var(--text-main)' }}>
             Registro de Eventos
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }} ref={calendarRef}>
@@ -680,17 +686,18 @@ export function DailyLogView() {
         <form onSubmit={handleSubmit}>
           <div
             style={{
-              backgroundColor: 'white',
+              backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: '12px',
-              padding: '20px',
+              borderRadius: 'var(--radius-card)',
+              padding: 'var(--space-lg)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px',
+              gap: 'var(--space-md)',
+              boxShadow: 'var(--shadow-sm)',
             }}
           >
             <header>
-              <h3 style={{ margin: 0, fontWeight: 600, fontSize: '16px' }}>
+              <h3 style={{ margin: 0, fontWeight: 'var(--font-weight-semibold)', fontSize: 'var(--font-size-md)', color: 'var(--text-main)' }}>
                 {selectedRep ? (
                   <>
                     Registrar para:{' '}
@@ -793,12 +800,12 @@ export function DailyLogView() {
                 disabled={!selectedRep}
                 style={{
                   padding: '10px 16px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  backgroundColor: !selectedRep ? '#e5e7eb' : '#2563eb',
-                  color: !selectedRep ? '#9ca3af' : '#ffffff',
+                  fontSize: 'var(--font-size-base)',
+                  fontWeight: 'var(--font-weight-semibold)',
+                  backgroundColor: !selectedRep ? 'var(--bg-subtle)' : 'var(--accent)',
+                  color: !selectedRep ? 'var(--text-muted)' : '#ffffff',
                   border: 'none',
-                  borderRadius: '6px',
+                  borderRadius: 'var(--radius-md)',
                   cursor: !selectedRep ? 'not-allowed' : 'pointer',
                   width: '100%',
                   transition: 'background-color 0.2s',
@@ -815,18 +822,19 @@ export function DailyLogView() {
             flex: 1,
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap: '16px',
+            gap: 'var(--space-md)',
             overflowY: 'hidden',
           }}
         >
           <div
             style={{
-              backgroundColor: 'white',
+              backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: '12px',
-              padding: '20px',
+              borderRadius: 'var(--radius-card)',
+              padding: 'var(--space-lg)',
               overflowY: 'auto',
-              marginBottom: '24px',
+              marginBottom: 'var(--space-lg)',
+              boxShadow: 'var(--shadow-sm)',
             }}
           >
             <DailyEventsList
@@ -837,12 +845,13 @@ export function DailyLogView() {
           </div>
           <div
             style={{
-              backgroundColor: 'white',
+              backgroundColor: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: '12px',
-              padding: '20px',
+              borderRadius: 'var(--radius-card)',
+              padding: 'var(--space-lg)',
               overflowY: 'auto',
-              marginBottom: '16px',
+              marginBottom: 'var(--space-md)',
+              boxShadow: 'var(--shadow-sm)',
             }}
           >
             <DailyEventsList
@@ -855,19 +864,21 @@ export function DailyLogView() {
       </section>
 
       {/* GLOBAL CONFIRM DIALOG */}
-      {confirmConfig && (
-        <ConfirmDialog
-          open={confirmConfig.open}
-          title={confirmConfig.title}
-          description={confirmConfig.description}
-          intent="warning"
-          confirmLabel={confirmConfig.confirmText}
-          cancelLabel={confirmConfig.cancelText}
-          onConfirm={() => confirmConfig.resolve(true)}
-          onCancel={() => confirmConfig.resolve(false)}
-        />
-      )}
-    </div>
+      {
+        confirmConfig && (
+          <ConfirmDialog
+            open={confirmConfig.open}
+            title={confirmConfig.title}
+            description={confirmConfig.description}
+            intent="warning"
+            confirmLabel={confirmConfig.confirmText}
+            cancelLabel={confirmConfig.cancelText}
+            onConfirm={() => confirmConfig.resolve(true)}
+            onCancel={() => confirmConfig.resolve(false)}
+          />
+        )
+      }
+    </div >
   )
 }
 

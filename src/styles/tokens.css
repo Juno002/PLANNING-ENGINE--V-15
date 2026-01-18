@@ -1,0 +1,95 @@
+/**
+ * DESIGN TOKENS
+ * 
+ * Single source of truth for visual decisions.
+ * Rules:
+ * - No new tokens without justification
+ * - No exceptions to existing tokens
+ * - Consistency > creativity
+ */
+
+:root {
+    /* ============================================
+     COLORS - Neutral Foundation
+     ============================================ */
+
+    /* Backgrounds */
+    --bg-app: #f6f7f9;
+    /* App base - subtle, almost imperceptible */
+    --bg-surface: #ffffff;
+    /* Cards, panels - clean white */
+    --bg-subtle: #f9fafb;
+    /* Rows, soft sections */
+
+    /* Borders */
+    --border-subtle: #e5e7eb;
+    --border-strong: #d1d5db;
+
+    /* Text */
+    --text-main: #111827;
+    /* Primary text - high contrast */
+    --text-muted: #6b7280;
+    /* Secondary text */
+    --text-faint: #9ca3af;
+    /* Tertiary, hints */
+
+    /* ============================================
+     COLORS - Semantic
+     ============================================ */
+
+    --accent: #2563eb;
+    /* Primary actions, focus */
+    --accent-soft: #eff6ff;
+    /* Accent backgrounds */
+
+    --success: #16a34a;
+    --warning: #eab308;
+    --danger: #ef4444;
+
+    /* ============================================
+     RADII - Consistent Rounding
+     ============================================ */
+
+    --radius-sm: 6px;
+    /* Inputs, small buttons */
+    --radius-md: 8px;
+    /* Standard buttons, cards */
+    --radius-lg: 12px;
+    /* Large panels */
+    --radius-card: 14px;
+    /* Main cards */
+
+    /* ============================================
+     SHADOWS - Subtle Elevation
+     ============================================ */
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+    /* ============================================
+     SPACING - Consistent Air
+     ============================================ */
+
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+
+    /* ============================================
+     TYPOGRAPHY - Hierarchy
+     ============================================ */
+
+    --font-size-xs: 11px;
+    --font-size-sm: 13px;
+    --font-size-base: 14px;
+    --font-size-md: 15px;
+    --font-size-lg: 18px;
+    --font-size-xl: 20px;
+
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+}

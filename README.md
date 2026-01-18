@@ -1,7 +1,7 @@
 # Planning Engine — v1.0 (OPERATIVO ESTABLE)
 
 **Estado**: 🟢 OPERATIVO ESTABLE | **Stack**: Next.js 14 + TypeScript + Zustand + IndexedDB  
-**Última actualización**: 2026-01-17 | **Fase**: 6 (CERRADO)
+**Última actualización**: 2026-01-18 | **Fase**: 7 (CONTRATO VISUAL CERRADO)
 
 ---
 
@@ -167,6 +167,28 @@ src/
 
 ---
 
+## 🚨 Áreas de Alto Riesgo (NO TOCAR)
+
+Si tocas esto sin entender el "por qué", el sistema dejará de ser determinista y pasará a ser "una opinión".
+
+1. **Tokens Visuales (`tokens.css`)**:
+   - Fuente única de verdad. No usar HEX ni estilos inline.
+   - Romper esto elimina la consistencia visual y el soporte futuro de temas (Dark Mode).
+
+2. **Lógica de Swaps (`validateSwapOperation.ts`)**:
+   - Contiene 29 invariantes de seguridad.
+   - Modificar una condición aquí puede permitir estados imposibles (doble turno, cobertura fantasma).
+
+3. **Resolución de Fechas (`resolveIncidentDates.ts`)**:
+   - Diferencia crítica entre días naturales (Licencias) y días hábiles (Vacaciones).
+   - Tocar esto rompe el cálculo de nómina y días libres.
+
+4. **Identidad de Turno (`belongsToShiftThisWeek`)**:
+   - Determina quién aparece en qué turno.
+   - Alterar esto causa "agentes fantasma" o desapariciones en la grilla.
+
+---
+
 ## 🔑 Conceptos Fundamentales
 
 ### 1. **Representative (Representante)**
@@ -301,6 +323,9 @@ El sistema tiene **cobertura exhaustiva** en tres niveles:
 - Primera carga < 2s
 - Navegación instantánea entre vistas
 - Persistencia automática en IndexedDB (300ms debounce)
+
+- **Persistencia automática en IndexedDB (300ms debounce)**
+- **Design System Tokenizado**: Contrato visual estricto (Zero hardcoded values)
 
 ---
 

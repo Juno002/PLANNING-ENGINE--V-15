@@ -106,43 +106,43 @@ export function ManagerScheduleManagement() {
     const isCurrentWeek = weekDays.some(d => d.date === format(new Date(), 'yyyy-MM-dd'))
 
     return (
-        <div>
-            <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'var(--bg-app)', minHeight: '100vh', padding: 'var(--space-lg)' }}>
+            <div style={{ marginBottom: 'var(--space-lg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                    <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#111827' }}>
+                    <h3 style={{ margin: '0 0 var(--space-xs) 0', fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--text-main)' }}>
                         Horarios de Gerencia
                     </h3>
-                    <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>
+                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
                         Planificación semanal con soporte para incidencias.
                     </p>
                 </div>
 
                 {/* Time Sovereign */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
 
                     {!isCurrentWeek && (
                         <button
                             onClick={() => setPlanningAnchorDate(format(new Date(), 'yyyy-MM-dd'))}
                             style={{
                                 padding: '6px 12px',
-                                background: 'white',
-                                border: '1px solid #d1d5db',
+                                background: 'var(--bg-surface)',
+                                border: '1px solid var(--border-subtle)',
                                 borderRadius: 'var(--radius-md)',
-                                fontSize: '13px',
-                                fontWeight: 600,
-                                color: '#374151',
+                                fontSize: 'var(--font-size-sm)',
+                                fontWeight: 'var(--font-weight-semibold)',
+                                color: 'var(--text-main)',
                                 cursor: 'pointer',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                boxShadow: 'var(--shadow-sm)'
                             }}
                         >
                             Hoy
                         </button>
                     )}
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                        <button onClick={handlePrevWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)' }}>&lt;</button>
-                        <span style={{ fontSize: '15px', fontWeight: 600, width: '220px', textAlign: 'center', color: '#111827' }}>{weekLabel}</span>
-                        <button onClick={handleNextWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)' }}>&gt;</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', background: 'var(--bg-surface)', padding: '6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+                        <button onClick={handlePrevWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)' }}>&lt;</button>
+                        <span style={{ fontSize: 'var(--font-size-md)', fontWeight: 'var(--font-weight-semibold)', width: '220px', textAlign: 'center', color: 'var(--text-main)' }}>{weekLabel}</span>
+                        <button onClick={handleNextWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)' }}>&gt;</button>
                     </div>
                 </div>
 
@@ -150,13 +150,13 @@ export function ManagerScheduleManagement() {
                     <button
                         onClick={handleCopyWeek}
                         style={{
-                            background: '#f3f4f6',
-                            border: '1px solid #d1d5db',
+                            background: 'var(--bg-subtle)',
+                            border: '1px solid var(--border-subtle)',
                             borderRadius: 'var(--radius-md)',
                             padding: '4px 12px',
-                            fontSize: '13px',
+                            fontSize: 'var(--font-size-sm)',
                             cursor: 'pointer',
-                            color: '#374151',
+                            color: 'var(--text-main)',
                         }}
                         title="Copiar planificación a la próxima semana"
                     >
@@ -166,15 +166,15 @@ export function ManagerScheduleManagement() {
             </div>
 
             {/* Main Grid */}
-            <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-card)', overflow: 'hidden', background: 'white', boxShadow: 'var(--shadow-card)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+            <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-card)', overflow: 'hidden', background: 'var(--bg-surface)', boxShadow: 'var(--shadow-md)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)' }}>
                     <thead>
-                        <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                            <th style={{ textAlign: 'left', padding: '12px 16px', color: '#374151', fontWeight: 600, width: '200px' }}>Supervisor</th>
+                        <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+                            <th style={{ textAlign: 'left', padding: 'var(--space-md)', color: 'var(--text-muted)', fontWeight: 'var(--font-weight-semibold)', width: '200px' }}>Supervisor</th>
                             {weekDays.map(day => (
-                                <th key={day.date} style={{ textAlign: 'center', padding: '12px 8px', color: '#374151', fontWeight: 600 }}>
+                                <th key={day.date} style={{ textAlign: 'center', padding: 'var(--space-md) var(--space-sm)', color: 'var(--text-muted)', fontWeight: 'var(--font-weight-semibold)' }}>
                                     <div>{format(parseISO(day.date), 'EEE', { locale: es })}</div>
-                                    <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 400 }}>{format(parseISO(day.date), 'd')}</div>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-faint)', fontWeight: 'var(--font-weight-normal)' }}>{format(parseISO(day.date), 'd')}</div>
                                 </th>
                             ))}
                             <th style={{ width: '40px' }}></th>
@@ -215,8 +215,8 @@ export function ManagerScheduleManagement() {
                                 const progress = Math.min((weeklyLoad / 20) * 100, 100)
 
                                 return (
-                                    <tr key={manager.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                        <td style={{ padding: '8px 16px', color: '#111827', fontWeight: 500 }}>
+                                    <tr key={manager.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                        <td style={{ padding: 'var(--space-sm) var(--space-md)', color: 'var(--text-main)', fontWeight: 'var(--font-weight-medium)' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                     <div style={{ width: '24px', height: '24px', background: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
@@ -289,35 +289,37 @@ export function ManagerScheduleManagement() {
                             })}
                         {managers.length === 0 && (
                             <tr>
-                                <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: '#9ca3af' }}>
+                                <td colSpan={9} style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>
                                     No hay supervisores registrados. Añade uno abajo.
                                 </td>
                             </tr>
                         )}
 
                         {/* Add Row */}
-                        <tr style={{ background: '#fefce8' }}>
-                            <td style={{ padding: '12px 16px' }}>
-                                <div style={{ display: 'flex', gap: '8px' }}>
+                        <tr style={{ background: 'var(--bg-subtle)' }}>
+                            <td style={{ padding: 'var(--space-md)' }}>
+                                <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
                                     <input
                                         placeholder="Nuevo Supervisor..."
                                         value={newManagerName}
                                         onChange={(e) => setNewManagerName(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleCreateManager()}
                                         style={{
-                                            border: '1px solid #d1d5db',
+                                            border: '1px solid var(--border-subtle)',
                                             borderRadius: 'var(--radius-md)',
-                                            padding: '4px 8px',
-                                            fontSize: '14px',
+                                            padding: 'var(--space-sm)',
+                                            fontSize: 'var(--font-size-base)',
                                             flex: 1,
-                                            outline: 'none'
+                                            outline: 'none',
+                                            background: 'var(--bg-surface)',
+                                            color: 'var(--text-main)'
                                         }}
                                     />
                                     <button
                                         onClick={handleCreateManager}
                                         disabled={!newManagerName.trim()}
                                         style={{
-                                            background: '#16a34a',
+                                            background: 'var(--success)',
                                             color: 'white',
                                             border: 'none',
                                             borderRadius: 'var(--radius-md)',

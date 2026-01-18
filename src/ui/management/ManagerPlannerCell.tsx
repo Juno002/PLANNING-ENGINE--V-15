@@ -50,13 +50,13 @@ export function ManagerPlannerCell({ state, label, tooltip, onClick, onChange, c
                 alignItems: 'center',
                 justifyContent: 'center',
             }}
-            onClick={onClick} // Keep onClick for backwards compat/other uses if any (though we are replacing it)
+            title={tooltip} // ✅ Moved tooltip here so it works even if content covers it
+            onClick={onClick}
         >
             {label ?? '—'}
 
             {tooltip && (
                 <span
-                    title={tooltip}
                     style={{
                         position: 'absolute',
                         top: 2,

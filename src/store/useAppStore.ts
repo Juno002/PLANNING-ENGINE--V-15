@@ -33,7 +33,7 @@ import {
 import { generateMonthDays } from '@/domain/calendar/state'
 import { validateIncident } from '@/domain/incidents/validateIncident'
 import { resolveIncidentDates } from '@/domain/incidents/resolveIncidentDates'
-import { ReactNode } from 'react'
+import React, { ReactNode } from 'react'
 import { calculatePoints } from '@/domain/analytics/computeMonthlySummary'
 import { AuditEvent } from '@/domain/audit/types'
 import { recordAuditEvent } from '@/domain/audit/auditRecorder'
@@ -404,14 +404,18 @@ export const useAppStore = create<AppState>()(
           });
         } else {
           const isOverride = newIncident.type === 'OVERRIDE'
+          const repName = humanize.repName(representatives, newIncident.representativeId)
+          const incidentLabel = humanize.incidentLabel(newIncident.type)
+
           confirmed = await showConfirm({
             title: isOverride ? 'Confirmar Cambio de Turno' : 'Confirmar Incidencia',
-            description: `Registrar ${isOverride ? 'una modificación manual' : humanize.incidentLabel(
-              newIncident.type
-            )} a ${humanize.repName(
-              representatives,
-              newIncident.representativeId
-            )}.`,
+            description: React.createElement('span', null,
+              'Registrar ',
+              isOverride ? 'una modificación manual' : React.createElement('strong', null, incidentLabel),
+              ' a ',
+              React.createElement('strong', null, repName),
+              '.'
+            ),
             intent: isOverride ? 'info' : 'info',
             confirmLabel: isOverride ? 'Aplicar Cambio' : 'Registrar',
           });
