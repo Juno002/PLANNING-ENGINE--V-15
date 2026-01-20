@@ -84,6 +84,7 @@ export interface SpecialSchedule {
   daysOfWeek: number[] // 0=Sun, 1=Mon, ..., 6=Sat
   assignment: ShiftAssignment
   reason?: string
+  note?: string
 }
 
 

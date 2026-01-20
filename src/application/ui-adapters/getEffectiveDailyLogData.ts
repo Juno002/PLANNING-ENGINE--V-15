@@ -69,6 +69,8 @@ export function getEffectiveDailyLogData(
                     if (duty.reason === 'AUSENCIA') {
                         logStatus = 'ABSENT'
                     } else if (duty.reason && ['VACACIONES', 'LICENCIA'].includes(duty.reason)) {
+                        // TODO: Refine Semantics. Consider splitting 'ABSENT' into 'ABSENT_JUSTIFIED' vs 'ABSENT_UNJUSTIFIED'.
+                        // Currently "Vacaciones" = "Absent" works for accounting but is visually coarse.
                         logStatus = 'ABSENT'  // Justified absences are still absences
                     } else {
                         logStatus = 'OFF'

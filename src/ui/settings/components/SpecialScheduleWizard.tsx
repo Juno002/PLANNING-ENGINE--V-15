@@ -5,11 +5,12 @@
  * Progressive single-view design: one question at a time, all choices visible.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { WizardState, ScheduleIntent } from './wizardTypes'
 import { wizardToSpecialSchedule } from './wizardToSpecialSchedule'
 import { format, parseISO, differenceInWeeks } from 'date-fns'
+import { SpecialSchedule } from '@/domain/types'
 
 const DaysOfWeekSelector = ({
     selectedDays,
@@ -54,11 +55,13 @@ const DaysOfWeekSelector = ({
 export function SpecialScheduleWizard({
     repId,
     repName,
-    onSave
+    onSave,
+    initialSchedule
 }: {
     repId: string
     repName: string
     onSave: () => void
+    initialSchedule?: SpecialSchedule
 }) {
     const [state, setState] = useState<WizardState>({
         intent: null,
@@ -66,7 +69,34 @@ export function SpecialScheduleWizard({
         replaceBaseMixedDays: true, // Default: replace (normal operational rule)
     })
 
+    useEffect(() => {
+        if (initialSchedule) {
+            let intent: ScheduleIntent = 'WORK_SINGLE_SHIFT';
+            let shift: 'DAY' | 'NIGHT' | undefined;
+
+            if (initialSchedule.assignment.type === 'NONE') {
+                intent = 'OFF';
+            } else if (initialSchedule.assignment.type === 'BOTH') {
+                intent = 'WORK_BOTH_SHIFTS';
+            } else {
+                intent = 'WORK_SINGLE_SHIFT';
+                shift = initialSchedule.assignment.shift;
+            }
+
+            setState({
+                intent,
+                shift,
+                startDate: initialSchedule.startDate,
+                endDate: initialSchedule.endDate,
+                days: initialSchedule.daysOfWeek,
+                note: initialSchedule.note || initialSchedule.reason, // Backwards compatibility
+                replaceBaseMixedDays: true // Default assumption for edit
+            });
+        }
+    }, [initialSchedule]);
+
     const addSpecialSchedule = useAppStore(s => s.addSpecialSchedule)
+    const updateSpecialSchedule = useAppStore(s => s.updateSpecialSchedule)
     const representatives = useAppStore(s => s.representatives ?? [])
 
     // Detect if base schedule is mixed
@@ -136,7 +166,29 @@ export function SpecialScheduleWizard({
 
         try {
             const schedules = wizardToSpecialSchedule(state, repId, baseMixedDays)
-            schedules.forEach(schedule => addSpecialSchedule(schedule))
+
+            if (initialSchedule) {
+                // For edit, we assume the wizard produces one main schedule that replaces the initial one.
+                // The `wizardToSpecialSchedule` can potentially return multiple if splitting ranges, but for this wizard flow it usually returns one block unless logic changed.
+                // However, `wizardToSpecialSchedule` creates NEW objects with NEW IDs.
+                // We should take the properties and update the existing ID.
+
+                const updatedData = schedules[0]; // Take the first one as the update target
+                // Update the existing schedule
+                updateSpecialSchedule(initialSchedule.id, {
+                    startDate: updatedData.startDate,
+                    endDate: updatedData.endDate,
+                    daysOfWeek: updatedData.daysOfWeek,
+                    assignment: updatedData.assignment,
+                    reason: updatedData.reason,
+                    note: state.note // Explicit note from wizard state
+                });
+            } else {
+                schedules.forEach(schedule => addSpecialSchedule({
+                    ...schedule,
+                    note: state.note
+                }))
+            }
             onSave()
         } catch (error) {
             alert(error instanceof Error ? error.message : 'Error al guardar')
@@ -176,7 +228,7 @@ export function SpecialScheduleWizard({
             {/* Header */}
             <div>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-main)' }}>
-                    Ajuste temporal de horario
+                    {initialSchedule ? 'Editar Horario Especial' : 'Ajuste temporal de horario'}
                 </h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--text-muted)' }}>
                     Define excepciones al horario habitual durante un período
@@ -422,7 +474,7 @@ export function SpecialScheduleWizard({
                         fontSize: '14px',
                     }}
                 >
-                    Guardar Horario
+                    {initialSchedule ? 'Actualizar Horario' : 'Guardar Horario'}
                 </button>
             </div>
         </form>

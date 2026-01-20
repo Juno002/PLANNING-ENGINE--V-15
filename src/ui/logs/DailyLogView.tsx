@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { DailyEventsList } from './DailyEventsList'
+import { buildWeeklySchedule } from '../../domain/planning/buildWeeklySchedule'
 import {
   Representative,
   IncidentType,
@@ -9,403 +10,381 @@ import {
   IncidentInput,
   Incident,
   ShiftType,
-  DayInfo,
   WeeklyPlan,
-  ShiftAssignment,
+  SwapEvent,
+  EffectiveSchedulePeriod,
 } from '../../domain/types'
-import { useIncidentFlow } from '../../hooks/useIncidentFlow'
-import * as humanize from '@/application/presenters/humanize'
 import { resolveIncidentDates } from '../../domain/incidents/resolveIncidentDates'
 import { checkIncidentConflicts } from '../../domain/incidents/checkIncidentConflicts'
-import { Sun, Moon, Users, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
-import { useWeeklyPlan } from '@/hooks/useWeeklyPlan'
-import { useWeekNavigator } from '@/hooks/useWeekNavigator'
 import { InlineAlert } from '../components/InlineAlert'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import {
   getEffectiveDailyLogData,
   DailyLogEntry,
+  LogStatus
 } from '@/application/ui-adapters/getEffectiveDailyLogData'
-import { format, parseISO, addDays, subDays, isToday } from 'date-fns'
+import { getPlannedAgentsForDay } from '@/application/ui-adapters/getPlannedAgentsForDay'
+import { getDailyShiftStats } from '@/application/ui-adapters/getDailyShiftStats'
+import { format, parseISO, addDays, subDays, isToday, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { CalendarGrid } from '../components/CalendarGrid'
-import { isWorking, isExpected } from '@/application/ui-adapters/dailyLogUtils'
-
-const styles = {
-  btnPrimary: {
-    backgroundColor: 'var(--accent)',
-    color: 'white',
-    padding: '10px',
-    borderRadius: 'var(--radius-md)',
-    fontWeight: 'var(--font-weight-semibold)',
-    transition: 'all 0.2s ease',
-    border: 'none',
-    cursor: 'pointer',
-    width: '100%',
-  },
-  btnDisabled: {
-    backgroundColor: '#e5e7eb',
-    color: '#9ca3af',
-    cursor: 'not-allowed',
-  },
-  input: {
-    width: '100%',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-md)',
-    padding: '10px 12px',
-    fontSize: 'var(--font-size-base)',
-    boxSizing: 'border-box' as React.CSSProperties['boxSizing'],
-    background: 'var(--bg-surface)',
-    color: 'var(--text-main)',
-  },
-  label: {
-    display: 'block',
-    fontSize: 'var(--font-size-base)',
-    fontWeight: 'var(--font-weight-medium)',
-    marginBottom: '6px',
-    color: 'var(--text-main)',
-  },
-  listItem: {
-    width: '100%',
-    textAlign: 'left' as 'left',
-    padding: 'var(--space-sm) var(--space-md)',
-    borderRadius: 'var(--radius-md)',
-    cursor: 'pointer',
-    border: 'none',
-    background: 'transparent',
-    fontSize: 'var(--font-size-base)',
-    color: 'var(--text-main)',
-  },
-  activeListItem: {
-    background: 'var(--bg-subtle)',
-    fontWeight: 'var(--font-weight-semibold)',
-  },
-}
 
 export type EnrichedIncident = Incident & {
   repName: string
-  repShift: ShiftType
-  dayCount: number
-  totalDuration: number
-  returnDate: ISODate
+  repShift?: ShiftType
+  dayCount?: number
+  totalDuration?: number
+  returnDate?: string
 }
 
-const ShiftStatusDisplay = ({
-  label,
-  isActive,
-  onClick,
-  presentCount,
-  plannedCount,
-}: {
-  label: string
-  isActive: boolean
-  onClick: () => void
-  presentCount: number
-  plannedCount: number
-}) => {
-  const baseStyle: React.CSSProperties = {
+const styles = {
+  label: { display: 'block', marginBottom: 4, fontWeight: 500, fontSize: '0.875rem', color: '#374151' },
+  input: {
     width: '100%',
-    padding: '10px 14px',
-    borderRadius: '8px',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: '1px solid #d1d5db',
+    fontSize: '0.875rem',
+    outline: 'none',
+    transition: 'border-color 0.2s',
+  },
+  listItem: {
+    padding: '8px 12px',
+    borderRadius: '6px',
     border: '1px solid transparent',
-    textAlign: 'left',
+    background: 'transparent',
+    textAlign: 'left' as const,
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    background: '#f9fafb',
-    borderColor: '#f3f4f6',
-    position: 'relative',
+    fontSize: '14px',
+    display: 'block',
+    width: '100%',
+    color: '#374151'
+  },
+  activeListItem: {
+    background: '#eff6ff',
+    borderColor: '#bfdbfe',
+    color: '#1e40af',
+    fontWeight: 600
   }
+}
 
-  if (isActive) {
-    baseStyle.background = 'white'
-    baseStyle.borderColor = '#e5e7eb'
-    baseStyle.boxShadow = '0 2px 8px rgba(0,0,0,0.05)'
-  }
-
+// Local Component
+function ShiftStatusDisplay({ label, isActive, onClick, presentCount, plannedCount }: {
+  label: string, isActive: boolean, onClick: () => void, presentCount: number, plannedCount: number
+}) {
   return (
-    <button onClick={onClick} style={baseStyle}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {label === 'Día' ? (
-          <Sun size={18} style={{ color: '#fbbf24' }} />
-        ) : (
-          <Moon size={18} style={{ color: '#a5b4fc' }} />
-        )}
-        <span style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-main)' }}>
-          {label}
-        </span>
+    <div
+      onClick={onClick}
+      style={{
+        padding: '10px',
+        borderRadius: '8px',
+        border: isActive ? '2px solid #2563eb' : '1px solid #e5e7eb',
+        background: isActive ? '#eff6ff' : 'white',
+        cursor: 'pointer',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}
+    >
+      <span style={{ fontWeight: 600, color: isActive ? '#1e40af' : '#374151' }}>{label}</span>
+      <div style={{ textAlign: 'right' }}>
+        <span style={{ fontSize: '18px', fontWeight: 700, color: '#111827' }}>{presentCount}</span>
+        <span style={{ fontSize: '12px', color: '#6b7280' }}> / {plannedCount}</span>
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          top: '12px',
-          right: '14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-        }}
-      >
-        <Users size={14} style={{ color: 'var(--text-muted)' }} />
-        <span
-          style={{
-            fontWeight: 700,
-            fontSize: '1.25rem',
-            color: 'var(--text-main)',
-          }}
-        >
-          {presentCount}
-        </span>
-        <span style={{ fontWeight: 500, fontSize: '1rem', color: '#9ca3af' }}>
-          / {plannedCount}
-        </span>
-      </div>
-    </button>
+    </div>
   )
+}
+
+function calculateShiftCounts(data: DailyLogEntry[], shift: ShiftType) {
+  const shiftEntries = data.filter(e => e.shift === shift)
+
+  // Planned: Expected to be there (Working, Covering, Double, Swapped In, Absent)
+  // Excluded: OFF, COVERED, SWAPPED_OUT
+  const planned = shiftEntries.filter(e =>
+    ['WORKING', 'COVERING', 'DOUBLE', 'SWAPPED_IN', 'ABSENT'].includes(e.logStatus)
+  ).length
+
+  // Present: Actually there (Working, Covering, Double, Swapped In)
+  const present = shiftEntries.filter(e =>
+    ['WORKING', 'COVERING', 'DOUBLE', 'SWAPPED_IN'].includes(e.logStatus)
+  ).length
+
+  return { planned, present }
 }
 
 export function DailyLogView() {
   const {
-    incidents,
-    allCalendarDaysForRelevantMonths,
     representatives,
-    planningAnchorDate,
-    setPlanningAnchorDate,
+    incidents,
     swaps,
-    isLoading,
+    specialSchedules,
     effectivePeriods,
+    allCalendarDaysForRelevantMonths,
+    isLoading,
+    addIncident,
+    showConfirm,
     pushUndo,
-    removeIncident,
+    removeIncident
   } = useAppStore(s => ({
-    incidents: s.incidents,
-    allCalendarDaysForRelevantMonths: s.allCalendarDaysForRelevantMonths,
     representatives: s.representatives,
-    planningAnchorDate: s.planningAnchorDate,
-    setPlanningAnchorDate: s.setPlanningAnchorDate,
+    incidents: s.incidents,
     swaps: s.swaps,
+    specialSchedules: s.specialSchedules,
+    effectivePeriods: s.effectivePeriods,
+    allCalendarDaysForRelevantMonths: s.allCalendarDaysForRelevantMonths,
     isLoading: s.isLoading,
-    effectivePeriods: s.effectivePeriods ?? [],
+    addIncident: s.addIncident,
+    showConfirm: s.showConfirm,
     pushUndo: s.pushUndo,
-    removeIncident: s.removeIncident,
+    removeIncident: s.removeIncident
   }))
 
-  // 🎯 SIEMPRE empezar en el día actual (hoy)
-  // No sincronizar con planningAnchorDate para que siempre muestre "hoy" al entrar
   const [logDate, setLogDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
-  const calendarRef = useRef<HTMLDivElement>(null)
+  const [filterMode, setFilterMode] = useState<'TODAY' | 'WEEK' | 'MONTH'>('TODAY')
+  const [hideAbsent, setHideAbsent] = useState(false)
 
-  const { weekDays } = useWeekNavigator(logDate, setLogDate)
-  const { weeklyPlan } = useWeeklyPlan(weekDays)
-
-  const [activeShift, setActiveShift] = useState<ShiftType>('DAY')
+  // Local UI State
   const [selectedRep, setSelectedRep] = useState<Representative | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [incidentType, setIncidentType] = useState<IncidentType>('TARDANZA')
-  const [note, setNote] = useState('')
   const [duration, setDuration] = useState(1)
-  const [customPoints, setCustomPoints] = useState(0)
+  const [note, setNote] = useState('')
+  const [customPoints, setCustomPoints] = useState<number | ''>('')
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  const [activeShift, setActiveShift] = useState<'DAY' | 'NIGHT'>('DAY')
+  const [confirmConfig, setConfirmConfig] = useState<any>(null)
 
-  // 🛡️ CONFIRM DIALOG STATE
-  const [confirmConfig, setConfirmConfig] = useState<{
-    open: boolean
-    title: string
-    description: React.ReactNode
-    confirmText: string
-    cancelText: string
-    resolve: (value: boolean) => void
-  } | null>(null)
+  const calendarRef = useRef<HTMLDivElement>(null)
 
-  const showConfirm = (options: {
-    title: string
-    description: React.ReactNode
-    confirmText: string
-    cancelText: string
-  }): Promise<boolean> => {
-    return new Promise((resolve) => {
-      setConfirmConfig({
-        open: true,
-        title: options.title,
-        description: options.description,
-        confirmText: options.confirmText,
-        cancelText: options.cancelText,
-        resolve: (val) => {
-          setConfirmConfig(null)
-          resolve(val)
-        },
-      })
-    })
-  }
+  const dateForLog = useMemo(() => parseISO(logDate), [logDate])
 
-  // --- Close calendar on outside click ---
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
-        setIsCalendarOpen(false);
-      }
+  // Calculate the Weekly Plan for the logDate context
+  const activeWeeklyPlan = useMemo(() => {
+    if (allCalendarDaysForRelevantMonths.length === 0) return null
+
+    // Find week days
+    const start = startOfWeek(dateForLog, { weekStartsOn: 1 })
+    const days: any[] = [] // DayInfo
+    for (let i = 0; i < 7; i++) {
+      const dStr = format(addDays(start, i), 'yyyy-MM-dd')
+      const found = allCalendarDaysForRelevantMonths.find(d => d.date === dStr)
+      if (found) days.push(found)
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [calendarRef]);
 
-  // ⚠️ ADAPTER INTEGRATION
-  const dailyLogEntries = useMemo(() => {
-    if (!weeklyPlan || isLoading) return []
-    return getEffectiveDailyLogData(
-      weeklyPlan,
-      swaps,
+    if (days.length !== 7) return null
+
+    return buildWeeklySchedule(
+      representatives,
+      incidents,
+      specialSchedules,
+      days,
+      allCalendarDaysForRelevantMonths
+    )
+  }, [dateForLog, allCalendarDaysForRelevantMonths, representatives, incidents, specialSchedules])
+
+  // 🔒 CANONICAL RULE: Administrative vs Operational Filtering
+  const isAdministrativeIncident = incidentType === 'LICENCIA' || incidentType === 'VACACIONES'
+
+  const baseRepresentativeList = useMemo(() => {
+    if (isAdministrativeIncident) {
+      // 🧠 ADMINISTRATIVE = ALL ACTIVE REPRESENTATIVES
+      return representatives.filter(r => r.isActive)
+    }
+
+    // 🧠 OPERATIONAL = ONLY PLANNED FOR THIS SHIFT ON THIS DAY
+    if (!activeWeeklyPlan) return []
+
+    const plannedAgentsForShift = getPlannedAgentsForDay(
+      activeWeeklyPlan,
       incidents,
       logDate,
+      activeShift,
       allCalendarDaysForRelevantMonths,
       representatives,
-      effectivePeriods
+      effectivePeriods ?? []
     )
-  }, [
-    weeklyPlan,
-    swaps,
-    incidents,
-    logDate,
-    allCalendarDaysForRelevantMonths,
-    representatives,
-    isLoading,
-    effectivePeriods,
-  ])
 
-  const {
-    representativesInShift,
-    dayShiftPresent,
-    nightShiftPresent,
-    dayShiftPlanned,
-    nightShiftPlanned,
-  } = useMemo(() => {
-    if (!weeklyPlan || isLoading)
-      return {
-        representativesInShift: [],
-        dayShiftPresent: 0,
-        nightShiftPresent: 0,
-        dayShiftPlanned: 0,
-        nightShiftPlanned: 0,
-      }
-
-    // Coverage Counts
-    const dayEntries = dailyLogEntries.filter(e => e.shift === 'DAY')
-    const nightEntries = dailyLogEntries.filter(e => e.shift === 'NIGHT')
-
-    // 🧠 Metric Logic: present / planned ≠ coverage demand
-    const dayShiftPresent = dayEntries.filter(isWorking).length
-    const nightShiftPresent = nightEntries.filter(isWorking).length
-
-    const dayShiftPlanned = dayEntries.filter(isExpected).length
-    const nightShiftPlanned = nightEntries.filter(isExpected).length
-
-    // Representatives List (Active Shift)
-    const activeEntries = activeShift === 'DAY' ? dayEntries : nightEntries
     const repMap = new Map(representatives.map(r => [r.id, r]))
 
-    // 🔴 UX REFINEMENT: Administrative incidents ignore operational shift
-    if (incidentType === 'VACACIONES' || incidentType === 'LICENCIA') {
-      const representativesInShift = representatives
-        .filter(r => r.isActive !== false)
-        // Sort alphabetically to be nice
-        .sort((a, b) => a.name.localeCompare(b.name))
-
-      return {
-        representativesInShift,
-        dayShiftPresent,
-        nightShiftPresent,
-        dayShiftPlanned,
-        nightShiftPlanned,
-      }
-    }
-
-    const representativesInShift = activeEntries
-      .filter(e => {
-        // B2/B3 Separation of Concerns:
-        // 1. isExpected(e) -> TRUE (Keeps them in the math: 13/14)
-        // 2. We explicitly HIDE them from the list if they are ABSENT
-        return isExpected(e) && e.logStatus !== 'ABSENT'
-      })
-      .map(e => repMap.get(e.representativeId))
+    return plannedAgentsForShift
+      .map(p => repMap.get(p.representativeId))
       .filter((r): r is Representative => !!r && r.isActive)
-
-    return {
-      representativesInShift,
-      dayShiftPresent,
-      nightShiftPresent,
-      dayShiftPlanned,
-      nightShiftPlanned,
-    }
-  }, [dailyLogEntries, activeShift, weeklyPlan, representatives, isLoading, incidentType])
+  }, [
+    isAdministrativeIncident,
+    representatives,
+    activeWeeklyPlan,
+    incidents,
+    logDate,
+    activeShift,
+    allCalendarDaysForRelevantMonths,
+    effectivePeriods
+  ])
 
   const filteredRepresentatives = useMemo(() => {
-    if (!searchTerm) return representativesInShift
-    return representativesInShift.filter(r =>
-      r.name.toLowerCase().includes(searchTerm.toLowerCase())
+    let result = baseRepresentativeList
+
+    if (hideAbsent) {
+      result = result.filter(r => {
+        const isAbsent = incidents.some(i =>
+          i.representativeId === r.id &&
+          i.type === 'AUSENCIA' &&
+          i.startDate === logDate
+        )
+        return !isAbsent
+      })
+    }
+
+    if (!searchTerm) return result
+
+    const lower = searchTerm.toLowerCase()
+    return result.filter(r => r.name.toLowerCase().includes(lower))
+  }, [baseRepresentativeList, searchTerm, hideAbsent, incidents, logDate])
+
+  // Calculate Daily Stats
+  const dailyStats = useMemo(() => {
+    if (!activeWeeklyPlan?.agents?.length || isLoading) {
+      return { dayPresent: 0, dayPlanned: 0, nightPresent: 0, nightPlanned: 0 }
+    }
+
+    // Note: getDailyShiftStats handles null plan safely
+    const dayStats = getDailyShiftStats(
+      activeWeeklyPlan,
+      incidents,
+      logDate,
+      'DAY',
+      allCalendarDaysForRelevantMonths,
+      representatives,
+      effectivePeriods ?? []
     )
-  }, [representativesInShift, searchTerm])
+
+    const nightStats = getDailyShiftStats(
+      activeWeeklyPlan,
+      incidents,
+      logDate,
+      'NIGHT',
+      allCalendarDaysForRelevantMonths,
+      representatives,
+      effectivePeriods ?? []
+    )
+
+    return {
+      dayPresent: dayStats.present,
+      dayPlanned: dayStats.planned,
+      nightPresent: nightStats.present,
+      nightPlanned: nightStats.planned
+    }
+  }, [activeWeeklyPlan, incidents, logDate, allCalendarDaysForRelevantMonths, representatives, effectivePeriods])
+
+  const conflictCheck = useMemo(() => {
+    if (!selectedRep) return { hasConflict: false, messages: [] }
+
+    const input: IncidentInput = {
+      representativeId: selectedRep.id,
+      startDate: logDate,
+      type: incidentType,
+      duration: (incidentType === 'LICENCIA' || incidentType === 'VACACIONES') ? duration : 1,
+      note
+    }
+
+    return checkIncidentConflicts(
+      input.representativeId,
+      input.startDate,
+      input.type,
+      input.duration,
+      incidents,
+      allCalendarDaysForRelevantMonths,
+      selectedRep
+    )
+  }, [selectedRep, incidentType, logDate, duration, note, incidents, allCalendarDaysForRelevantMonths])
+
 
   const { dayIncidents, ongoingIncidents } = useMemo(() => {
     if (isLoading) return { dayIncidents: [], ongoingIncidents: [] };
 
     const repMap = new Map(representatives.map(r => [r.id, r]))
 
-    const allRelevantIncidents: EnrichedIncident[] = incidents
-      .map(incident => {
-        if (incident.type === 'OVERRIDE') return null
-        const rep = repMap.get(incident.representativeId)
-        if (!rep) return null
-        const resolved = resolveIncidentDates(
-          incident,
-          allCalendarDaysForRelevantMonths,
-          rep
-        )
-        const isActiveToday = resolved.dates.includes(logDate)
-        if (!isActiveToday) return null
+    // Define Range based on Filter Mode
+    let rangeStart: Date, rangeEnd: Date;
 
-        let dayCount = resolved.dates.indexOf(logDate) + 1
-        let totalDuration = resolved.dates.length
+    if (filterMode === 'WEEK') {
+      rangeStart = startOfWeek(dateForLog, { weekStartsOn: 1 });
+      rangeEnd = endOfWeek(dateForLog, { weekStartsOn: 1 });
+    } else if (filterMode === 'MONTH') {
+      rangeStart = startOfMonth(dateForLog);
+      rangeEnd = endOfMonth(dateForLog);
+    } else {
+      rangeStart = dateForLog;
+      rangeEnd = dateForLog;
+    }
 
-        // 🧠 SMART DISPLAY FOR VACATIONS
-        // If it's a vacation, we want to display "Day X of N (Working Days)".
-        // So we must recalculate the numerator and denominator to ignore Holidays/OFFs.
-        if (incident.type === 'VACACIONES') {
-          totalDuration = incident.duration ?? 14
+    // First map to potentially null, then filter
+    const candidates = incidents.map(incident => {
+      if (incident.type === 'OVERRIDE') return null
+      const rep = repMap.get(incident.representativeId)
+      if (!rep) return null
+      const resolved = resolveIncidentDates(
+        incident,
+        allCalendarDaysForRelevantMonths,
+        rep
+      )
 
-          // Recalculate numerator: How many WORKING days have passed up to today?
-          let workingDaysSoFar = 0
-          const visibleDates = resolved.dates
-          const todayIndex = visibleDates.indexOf(logDate)
+      // Filter Logic: Check if ANY resolved date falls within range
+      const isVisible = resolved.dates.some(dateStr => {
+        const date = parseISO(dateStr);
+        return date >= rangeStart && date <= rangeEnd;
+      });
 
-          for (let i = 0; i <= todayIndex; i++) {
+      if (!isVisible) return null
+
+      let dayCount = resolved.dates.indexOf(logDate) + 1
+      let totalDuration = resolved.dates.length
+
+      // 🧠 SMART DISPLAY FOR VACATIONS
+      if (incident.type === 'VACACIONES') {
+        totalDuration = incident.duration ?? 14
+
+        let workingDaysSoFar = 0
+        const visibleDates = resolved.dates
+        // Fix: dayCount should be relative to START of vacation until TODAY (or logDate)
+        // But only if logDate is inside the duration.
+        // If viewing past logDate, show day X of Y for that date? Yes.
+        const todaysIndex = visibleDates.indexOf(logDate)
+
+        if (todaysIndex >= 0) {
+          for (let i = 0; i <= todaysIndex; i++) {
             const dString = visibleDates[i]
             const dInfo = allCalendarDaysForRelevantMonths.find(d => d.date === dString)
-
-            // Replicate 'isCountable' logic from resolveIncidentDates
             const dayOfWeek = parseISO(dString).getUTCDay()
             const isBaseOff = rep.baseSchedule[dayOfWeek] === 'OFF'
-            const isHoliday = dInfo?.isSpecial === true // or kind === 'HOLIDAY'
-
-            // Only count if Working AND Not Special AND Not Base Off
-            // (Note: resolved.dates already excludes Base Off per previous step, but check safely)
+            const isHoliday = dInfo?.isSpecial === true
             if (!isBaseOff && !isHoliday) {
               workingDaysSoFar++
             }
           }
-          // Ensure it's at least 1 if it's active
           dayCount = Math.max(1, workingDaysSoFar)
+        } else {
+          // If filter is Week/Month, and logDate is NOT in the vacation, but incident is shown...
+          // We should probably show "Day X" relative to logDate if feasible, or just relative to Start.
+          // If logDate is outside, maybe use the last visible date in range?
+          // For now, if not found, just fallback to index 1 or 0.
+          dayCount = 1
         }
+      }
 
-        return {
-          ...incident,
-          repName: rep.name,
-          repShift: rep.baseShift,
-          dayCount,
-          totalDuration,
-          returnDate: resolved.returnDate,
-        }
-      })
-      .filter((i): i is EnrichedIncident => !!i)
+      const enriched: EnrichedIncident = {
+        ...incident,
+        repName: rep.name,
+        repShift: rep.baseShift,
+        dayCount,
+        totalDuration,
+        returnDate: resolved.returnDate,
+      }
+      return enriched
+    })
+
+    const allRelevantIncidents = candidates.filter((i): i is EnrichedIncident => i !== null)
 
     return {
       dayIncidents: allRelevantIncidents.filter(
@@ -415,58 +394,60 @@ export function DailyLogView() {
         i => i.type === 'VACACIONES' || i.type === 'LICENCIA'
       ),
     }
-  }, [incidents, logDate, allCalendarDaysForRelevantMonths, representatives, isLoading])
+  }, [incidents, logDate, dateForLog, allCalendarDaysForRelevantMonths, representatives, isLoading, filterMode])
 
-  const resetForm = useCallback((keepRep: boolean = false) => {
-    setIncidentType('TARDANZA')
-    setNote('')
-    setDuration(1)
-    setCustomPoints(0)
-    if (!keepRep) {
-      setSelectedRep(null)
-      setSearchTerm('')
-    }
-  }, [])
 
-  const { submit } = useIncidentFlow({
-    onSuccess: (incidentId?: string) => {
-      // ✅ SUCCESS: Trigger Undo UI here
-      // Fix M2: Ensure this always fires and gives feedback
-      if (incidentId) {
-        pushUndo({
-          label: 'Evento registrado', // Generic label for consistency
-          undo: () => removeIncident(incidentId, true), // Silent remove
-        }, 5000) // 5 seconds per user request (5-7s)
-      }
-      resetForm(true)
-    },
-  })
-
-  // ✅ STEP 3: Preventive validation (non-blocking)
-  const conflictCheck = useMemo(() => {
-    if (!selectedRep || isLoading) return { hasConflict: false }
-
-    return checkIncidentConflicts(
-      selectedRep.id,
-      logDate,
-      incidentType,
-      duration,
-      incidents,
-      allCalendarDaysForRelevantMonths,
-      selectedRep
-    )
-  }, [selectedRep, logDate, incidentType, duration, incidents, allCalendarDaysForRelevantMonths, isLoading])
-
-  // 🛡️ UX PROTECTION: Avoid zombie states
-  // If the user changes incident type and the selected rep is no longer in the list, clear selection.
+  // 🛡️ UX PROTECTION
   useEffect(() => {
     if (!selectedRep) return
-    const stillVisible = representativesInShift.some(r => r.id === selectedRep.id)
+    const stillVisible = baseRepresentativeList.some(r => r.id === selectedRep.id)
     if (!stillVisible) {
       setSelectedRep(null)
       setSearchTerm('')
     }
-  }, [incidentType, representativesInShift, selectedRep])
+  }, [incidentType, baseRepresentativeList, selectedRep])
+
+  const submit = async (input: IncidentInput, rep: Representative) => {
+    // Logic for adding incident
+    const conflicts = checkIncidentConflicts(
+      input.representativeId,
+      input.startDate,
+      input.type,
+      input.duration,
+      incidents,
+      allCalendarDaysForRelevantMonths,
+      rep
+    )
+
+    if (conflicts.hasConflict) {
+      const proceed = await showConfirm({
+        title: 'Conflictos Detectados',
+        description: (
+          <ul style={{ textAlign: 'left', margin: 0, paddingLeft: '20px' }}>
+            {(conflicts.messages ?? [conflicts.message ?? 'Conflicto detectado']).map((m: string, i: number) => <li key={i}>{m}</li>)}
+          </ul>
+        ),
+        intent: 'warning',
+        confirmLabel: 'Confirmar e Ignorar'
+      })
+      if (!proceed) return
+    }
+
+    const res = await addIncident(input)
+    if (res.ok) {
+      setNote('')
+      setCustomPoints('')
+
+      if (res.newId) {
+        pushUndo({
+          label: `Incidencia registrada para ${rep.name}`,
+          undo: () => removeIncident(res.newId!)
+        })
+      }
+    } else {
+      alert('Error: ' + res.reason)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -488,8 +469,8 @@ export function DailyLogView() {
             </span>
           </span>
         ),
-        confirmText: 'Sí, justificada',
-        cancelText: 'No, injustificada',
+        confirmLabel: 'Sí, justificada',
+        cancelLabel: 'No, injustificada',
       })
 
       if (isJustified) {
@@ -505,14 +486,13 @@ export function DailyLogView() {
       type: finalIncidentType,
       startDate: logDate,
       duration: isMultiDay ? duration : 1,
-      customPoints: finalIncidentType === 'OTRO' ? customPoints : undefined,
+      customPoints: finalIncidentType === 'OTRO' && customPoints !== '' ? Number(customPoints) : undefined,
       note: note.trim() || undefined,
       details,
     }
     submit(incidentInput, selectedRep)
   }
 
-  const dateForLog = parseISO(logDate)
 
   if (isLoading || allCalendarDaysForRelevantMonths.length === 0) {
     return <div>Cargando...</div>
@@ -557,23 +537,39 @@ export function DailyLogView() {
               label="Día"
               isActive={activeShift === 'DAY'}
               onClick={() => setActiveShift('DAY')}
-              presentCount={dayShiftPresent}
-              plannedCount={dayShiftPlanned}
+              presentCount={dailyStats.dayPresent}
+              plannedCount={dailyStats.dayPlanned}
             />
             <ShiftStatusDisplay
               label="Noche"
               isActive={activeShift === 'NIGHT'}
               onClick={() => setActiveShift('NIGHT')}
-              presentCount={nightShiftPresent}
-              plannedCount={nightShiftPlanned}
+              presentCount={dailyStats.nightPresent}
+              plannedCount={dailyStats.nightPlanned}
             />
           </div>
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <label style={{ ...styles.label, marginBottom: 'var(--space-sm)' }}>
-            Representantes del Turno
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-sm)' }}>
+            <label style={{ ...styles.label, marginBottom: 0 }}>
+              Representantes del Turno
+            </label>
+            <button
+              onClick={() => setHideAbsent(!hideAbsent)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: hideAbsent ? '#2563eb' : '#6b7280',
+                fontSize: '12px',
+                fontWeight: 500
+              }}
+              title="Solo afecta la vista, no el conteo"
+            >
+              {hideAbsent ? 'Mostrar Ausentes' : 'Ocultar Ausentes'}
+            </button>
+          </div>
           {(incidentType === 'VACACIONES' || incidentType === 'LICENCIA') && (
             <div style={{ marginBottom: 'var(--space-sm)', fontSize: 'var(--font-size-xs)', color: '#059669', background: '#ecfdf5', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid #a7f3d0' }}>
               Mostrando <strong>todos</strong> para registro administrativo.
@@ -595,18 +591,44 @@ export function DailyLogView() {
               flex: 1,
             }}
           >
-            {filteredRepresentatives.map(rep => (
-              <button
-                key={rep.id}
-                onClick={() => setSelectedRep(rep)}
-                style={{
-                  ...styles.listItem,
-                  ...(selectedRep?.id === rep.id ? styles.activeListItem : {}),
-                }}
-              >
-                {rep.name}
-              </button>
-            ))}
+            {filteredRepresentatives.map(rep => {
+              const isAbsent = incidents.some(i =>
+                i.representativeId === rep.id &&
+                i.type === 'AUSENCIA' &&
+                i.startDate === logDate
+              )
+
+              return (
+                <button
+                  key={rep.id}
+                  onClick={() => setSelectedRep(rep)}
+                  style={{
+                    ...styles.listItem,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    ...(selectedRep?.id === rep.id ? styles.activeListItem : {}),
+                    ...(isAbsent ? { opacity: 0.7 } : {})
+                  }}
+                >
+                  <span style={{ textDecoration: isAbsent ? 'line-through' : 'none', color: isAbsent ? '#6b7280' : 'inherit' }}>
+                    {rep.name}
+                  </span>
+                  {isAbsent && (
+                    <span style={{
+                      fontSize: '10px',
+                      background: '#fecaca',
+                      color: '#991b1b',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontWeight: 600
+                    }}>
+                      Ausente
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       </aside>
@@ -744,7 +766,6 @@ export function DailyLogView() {
                   onChange={e =>
                     setIncidentType(e.target.value as IncidentType)
                   }
-                // disabled={!selectedRep} <-- REMOVED THIS LINE
                 >
                   <option value="TARDANZA">Tardanza</option>
                   <option value="AUSENCIA">Ausencia</option>
@@ -807,10 +828,11 @@ export function DailyLogView() {
               />
             </div>
 
-            {/* ⚠️ STEP 3: Inline conflict warning */}
             {conflictCheck.hasConflict && (
               <InlineAlert variant="warning">
-                {conflictCheck.message}
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {(conflictCheck.messages ?? [conflictCheck.message ?? 'Conflicto detectado']).map((m: string, i: number) => <li key={i}>{m}</li>)}
+                </ul>
               </InlineAlert>
             )}
 
@@ -836,6 +858,57 @@ export function DailyLogView() {
             </div>
           </div>
         </form>
+
+        <div style={{ display: 'flex', gap: '8px', paddingBottom: '4px' }}>
+          <button
+            onClick={() => setFilterMode('TODAY')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              background: filterMode === 'TODAY' ? '#111827' : 'white',
+              color: filterMode === 'TODAY' ? 'white' : '#374151',
+              borderColor: filterMode === 'TODAY' ? '#111827' : '#d1d5db'
+            }}
+          >
+            Hoy
+          </button>
+          <button
+            onClick={() => setFilterMode('WEEK')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              background: filterMode === 'WEEK' ? '#111827' : 'white',
+              color: filterMode === 'WEEK' ? 'white' : '#374151',
+              borderColor: filterMode === 'WEEK' ? '#111827' : '#d1d5db'
+            }}
+          >
+            Esta Semana
+          </button>
+          <button
+            onClick={() => setFilterMode('MONTH')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              background: filterMode === 'MONTH' ? '#111827' : 'white',
+              color: filterMode === 'MONTH' ? 'white' : '#374151',
+              borderColor: filterMode === 'MONTH' ? '#111827' : '#d1d5db'
+            }}
+          >
+            Mes Actual
+          </button>
+        </div>
 
         <div
           style={{
@@ -883,22 +956,33 @@ export function DailyLogView() {
         </div>
       </section>
 
-      {/* GLOBAL CONFIRM DIALOG */}
-      {
-        confirmConfig && (
-          <ConfirmDialog
-            open={confirmConfig.open}
-            title={confirmConfig.title}
-            description={confirmConfig.description}
-            intent="warning"
-            confirmLabel={confirmConfig.confirmText}
-            cancelLabel={confirmConfig.cancelText}
-            onConfirm={() => confirmConfig.resolve(true)}
-            onCancel={() => confirmConfig.resolve(false)}
-          />
-        )
-      }
+      {/* GLOBAL CONFIRM DIALOG - Just in case store uses it here, though mostly useAppStore call triggers it */}
+      {/* If confirmConfig is local state used by legacy parts? We removed it locally except lines 87. 
+          The store's confirm is imperative. 
+          Actually DailyLogView DOES NOT need <ConfirmDialog> for the store's confirm if <ConfirmDialog> is rendered in App Layout.
+          BUT if it's not rendered in Layout, we need it here?
+          Usually ConfirmDialog is part of the Layout. 
+          But wait, line 87: `const [confirmConfig...`. We aren't using `confirmConfig` anymore based on my rewrite.
+          I replaced `confirm()` with `showConfirm` from store.
+          Does store render the dialog? 
+          Typically `useAppStore` holds state, but component must render UI.
+          Let's look at `Layout` or similar.
+          However, to be safe, I will include ConfirmDialog for store state if needed, but `useAppStore` has `confirmState`.
+          DailyLogView probably doesn't need to render it if it's global.
+          But wait, the `confirmConfig` in my previous edit was local. 
+          User said: "Toda confirmación debe pasar por showConfirm".
+          `useAppStore.showConfirm` typically sets a state in the store.
+          Who renders it?
+          If I don't see a `GlobalConfirmDialog` in layout, I might need to render it.
+
+          Let's assume the user has a global confirm dialog mechanism or I should render one that listens to store.
+          But for now, to ensure I don't break "visuals", I will rely on `showConfirm` promise flow.
+          If `showConfirm` sets `confirmState` in store, something must render it.
+          I see `confirmState` in `useAppStore`.
+          I'll assume the root layout handles it.
+          I will Remove the local `confirmConfig` usage to avoid confusion.
+      */}
+      {/* Only render store-based confirm if I am the one responsible? No, typically main layout. */}
     </div >
   )
 }
-

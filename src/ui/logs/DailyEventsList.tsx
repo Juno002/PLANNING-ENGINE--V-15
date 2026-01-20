@@ -1,24 +1,33 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, memo } from 'react'
+import { useMemo, memo, useState } from 'react'
 import { INCIDENT_STYLES } from '../../domain/incidents/incidentStyles'
 import { useAppStore } from '@/store/useAppStore'
-import type { EnrichedIncident } from './DailyLogView'
 import { StatusPill } from '../components/StatusPill'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Pencil } from 'lucide-react'
 import { calculatePoints } from '@/domain/analytics/computeMonthlySummary'
-import type { IncidentType } from '@/domain/types'
+import type { IncidentType, Incident } from '@/domain/types'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useEditMode } from '@/hooks/useEditMode'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 
-// --- VIEW MODELS ---
+// --- TYPES ---
+
+export type EnrichedIncident = Incident & {
+  repName: string
+  dayCount?: number
+  totalDuration?: number
+  returnDate?: string
+}
+
 interface PersonInGroup {
   repName: string
   count: number
   incidents: EnrichedIncident[]
 }
+
 interface GroupedByType {
   type: IncidentType
   totalCount: number
@@ -27,17 +36,27 @@ interface GroupedByType {
   totalPoints: number
 }
 
+interface DailyEventsListProps {
+  title: string
+  incidents: EnrichedIncident[]
+  emptyMessage: string
+}
+
 // --- RENDER COMPONENTS ---
 
 const PersonRow = memo(function PersonRow({
   person,
   onDelete,
+  onEdit,
   canDelete,
 }: {
   person: PersonInGroup
   onDelete: (ids: string[]) => void
+  onEdit: (incident: EnrichedIncident) => void
   canDelete: boolean
 }) {
+  const singleIncident = person.count === 1 ? person.incidents[0] : null
+
   return (
     <div
       style={{
@@ -57,6 +76,20 @@ const PersonRow = memo(function PersonRow({
           <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
             ×{person.count}
           </span>
+        )}
+        {singleIncident && canDelete && (
+          <button
+            onClick={() => onEdit(singleIncident)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#9ca3af',
+              cursor: 'pointer',
+            }}
+            title="Editar comentario"
+          >
+            <Pencil size={14} />
+          </button>
         )}
         {canDelete && (
           <button
@@ -79,10 +112,12 @@ const PersonRow = memo(function PersonRow({
 const OtherIncidentRow = memo(function OtherIncidentRow({
   incident,
   onDelete,
+  onEdit,
   canDelete,
 }: {
   incident: EnrichedIncident
   onDelete: (id: string) => void
+  onEdit: (incident: EnrichedIncident) => void
   canDelete: boolean
 }) {
   const points = calculatePoints(incident)
@@ -109,6 +144,19 @@ const OtherIncidentRow = memo(function OtherIncidentRow({
           )}
           {canDelete && (
             <button
+              onClick={() => onEdit(incident)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#9ca3af',
+                cursor: 'pointer',
+              }}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
               onClick={() => onDelete(incident.id)}
               style={{
                 background: 'none',
@@ -132,7 +180,6 @@ const OtherIncidentRow = memo(function OtherIncidentRow({
             color: '#374151',
             marginTop: '4px',
             wordBreak: 'break-word',
-            // Optional "Note" styling
             borderLeft: '3px solid var(--border-subtle)',
             paddingLeft: '8px',
           }}
@@ -147,10 +194,12 @@ const OtherIncidentRow = memo(function OtherIncidentRow({
 const RangeIncidentCard = memo(function RangeIncidentCard({
   incident,
   onDelete,
+  onEdit,
   canDelete,
 }: {
   incident: EnrichedIncident
   onDelete: (id: string) => void
+  onEdit: (incident: EnrichedIncident) => void
   canDelete: boolean
 }) {
   const styleInfo = INCIDENT_STYLES[incident.type] ?? INCIDENT_STYLES['OTRO']
@@ -184,17 +233,35 @@ const RangeIncidentCard = memo(function RangeIncidentCard({
         }}
       >
         <StatusPill label={styleInfo.label} variant={styleInfo.variant} />
-        {canDelete && (
-          <button
-            onClick={() => onDelete(incident.id)}
-            style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}
-          >
-            <Trash2 size={14} />
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {canDelete && (
+            <button
+              onClick={() => onEdit(incident)}
+              style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => onDelete(incident.id)}
+              style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </header>
       <div style={{ padding: '12px 15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{incident.repName}</div>
+
+        {/* Note Display */}
+        {incident.note && (
+          <p style={{ margin: 0, fontSize: '13px', color: '#4b5563', fontStyle: 'italic' }}>
+            "{incident.note}"
+          </p>
+        )}
+
         <div style={{ position: 'relative', width: '100%', background: '#f3f4f6', height: '8px', borderRadius: '4px' }}>
           <div style={{
             position: 'absolute',
@@ -224,11 +291,13 @@ const PunctualIncidentGroup = memo(function PunctualIncidentGroup({
   group,
   onDeleteSingle,
   onDeleteGroup,
+  onEdit,
   canDelete,
 }: {
   group: GroupedByType
   onDeleteSingle: (id: string) => void
   onDeleteGroup: (ids: string[]) => void
+  onEdit: (incident: EnrichedIncident) => void
   canDelete: boolean
 }) {
   const styleInfo = INCIDENT_STYLES[group.type] ?? INCIDENT_STYLES['OTRO']
@@ -268,6 +337,7 @@ const PunctualIncidentGroup = memo(function PunctualIncidentGroup({
               key={inc.id}
               incident={inc}
               onDelete={onDeleteSingle}
+              onEdit={onEdit}
               canDelete={canDelete}
             />
           ))
@@ -276,6 +346,7 @@ const PunctualIncidentGroup = memo(function PunctualIncidentGroup({
               key={person.repName}
               person={person}
               onDelete={onDeleteGroup}
+              onEdit={onEdit}
               canDelete={canDelete}
             />
           ))}
@@ -284,26 +355,24 @@ const PunctualIncidentGroup = memo(function PunctualIncidentGroup({
   )
 })
 
-// --- MAIN LIST COMPONENT ---
-interface DailyEventsListProps {
-  title: string
-  incidents: EnrichedIncident[]
-  emptyMessage: string
-}
-
 export function DailyEventsList({
   title,
   incidents = [],
   emptyMessage,
 }: DailyEventsListProps) {
-  const { removeIncident, removeIncidents, showConfirm } = useAppStore(s => ({
+  const { removeIncident, removeIncidents, showConfirm, updateIncident } = useAppStore(s => ({
     removeIncident: s.removeIncident,
     removeIncidents: s.removeIncidents,
     showConfirm: s.showConfirm,
+    updateIncident: s.updateIncident
   }))
 
   const { mode } = useEditMode()
   const canDelete = mode === 'ADMIN_OVERRIDE'
+
+  // Local state for editing note
+  const [editingIncident, setEditingIncident] = useState<EnrichedIncident | null>(null)
+  const [editNote, setEditNote] = useState('')
 
   const { punctualGroups, rangeIncidents } = useMemo(() => {
     const punctual = incidents.filter(i => i.type !== 'LICENCIA' && i.type !== 'VACACIONES')
@@ -384,6 +453,18 @@ export function DailyEventsList({
     }
   }
 
+  const handleEdit = (incident: EnrichedIncident) => {
+    setEditingIncident(incident)
+    setEditNote(incident.note || '')
+  }
+
+  const handleConfirmEdit = () => {
+    if (editingIncident) {
+      updateIncident(editingIncident.id, { note: editNote })
+      setEditingIncident(null)
+    }
+  }
+
   const hasItems = incidents.length > 0
 
   return (
@@ -434,6 +515,7 @@ export function DailyEventsList({
             key={incident.id}
             incident={incident}
             onDelete={() => handleDeleteSingle(incident)}
+            onEdit={handleEdit}
             canDelete={canDelete}
           />
         ))}
@@ -450,12 +532,44 @@ export function DailyEventsList({
               const person = group.people?.find(p => p.incidents.some(i => i.id === ids[0]));
               if (person) handleDeleteGroup(person, group.type)
             }}
+            onEdit={handleEdit}
             canDelete={canDelete}
           />
         ))}
 
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={!!editingIncident}
+        title="Editar Comentario"
+        description={
+          <div style={{ marginTop: 8 }}>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 8px 0' }}>
+              Modifica el comentario para esta incidencia.
+            </p>
+            <textarea
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                padding: '8px',
+                borderRadius: '6px',
+                border: '1px solid #d1d5db',
+                fontSize: '14px',
+                fontFamily: 'sans-serif',
+                resize: 'vertical'
+              }}
+              autoFocus
+            />
+          </div>
+        }
+        confirmLabel="Guardar Cambios"
+        cancelLabel="Cancelar"
+        intent="info"
+        onConfirm={handleConfirmEdit}
+        onCancel={() => setEditingIncident(null)}
+      />
     </section>
   )
 }
-

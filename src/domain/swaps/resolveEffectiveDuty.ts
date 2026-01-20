@@ -51,7 +51,46 @@ export function resolveEffectiveDuty(
   effectivePeriods: EffectiveSchedulePeriod[] = []
 ): EffectiveDutyResult {
   // ===============================================
-  // 1. EFFECTIVE SCHEDULE PERIOD: ABSOLUTE PRIORITY
+  // 0. OVERRIDE INCIDENTS: Manual changes to assignments
+  // ===============================================
+  // Overrides are manual interventions that MUST take precedence over everything else,
+  // including Special Schedules (Effective Periods).
+  const overrideIncident = incidents.find(i =>
+    i.representativeId === representativeId &&
+    i.type === 'OVERRIDE' &&
+    i.startDate === date
+  )
+
+  if (overrideIncident && overrideIncident.assignment) {
+    const assignment = overrideIncident.assignment
+    let overrideRole: EffectiveDutyRole = 'NONE'
+    let shouldWork = false
+
+    if (assignment.type === 'BOTH') {
+      shouldWork = true
+      overrideRole = 'BASE' // Or 'OVERRIDE_WORK'? keeping 'BASE' for now as it means "working standard"
+    } else if (assignment.type === 'SINGLE') {
+      shouldWork = assignment.shift === shift
+      overrideRole = shouldWork ? 'BASE' : 'NONE'
+    } else {
+      // OFF
+      shouldWork = false
+      overrideRole = 'NONE'
+    }
+
+    // If it matches properly, return it.
+    // Note: We return context to help tooltip
+    return {
+      shouldWork,
+      role: overrideRole,
+      reason: 'Manual Override',
+      source: 'OVERRIDE',
+      note: overrideIncident.note
+    }
+  }
+
+  // ===============================================
+  // 1. EFFECTIVE SCHEDULE PERIOD: SECOND PRIORITY
   // ===============================================
   const activePeriod = findActiveEffectivePeriod(effectivePeriods, representativeId, date)
 
@@ -91,48 +130,6 @@ export function resolveEffectiveDuty(
         source,
         note,
       }
-    }
-  }
-
-  // ===============================================
-  // 1.5. OVERRIDE INCIDENTS: Manual changes to assignments
-  // ===============================================
-  // Overrides are manual interventions that should take precedence over base plan
-  // but potentially be blocked by vacations? No, usually override implies "I know what I'm doing".
-  // However, the system UI creates overrides to set days OFF or ON.
-  // If we have an override for this date, we respect it ABOVE the base plan.
-
-  const overrideIncident = incidents.find(i =>
-    i.representativeId === representativeId &&
-    i.type === 'OVERRIDE' &&
-    i.startDate === date
-  )
-
-  if (overrideIncident && overrideIncident.assignment) {
-    const assignment = overrideIncident.assignment
-    let overrideRole: EffectiveDutyRole = 'NONE'
-    let shouldWork = false
-
-    if (assignment.type === 'BOTH') {
-      shouldWork = true
-      overrideRole = 'BASE' // Or 'OVERRIDE_WORK'? keeping 'BASE' for now as it means "working standard"
-    } else if (assignment.type === 'SINGLE') {
-      shouldWork = assignment.shift === shift
-      overrideRole = shouldWork ? 'BASE' : 'NONE'
-    } else {
-      // OFF
-      shouldWork = false
-      overrideRole = 'NONE'
-    }
-
-    // If it matches properly, return it.
-    // Note: We return context to help tooltip
-    return {
-      shouldWork,
-      role: overrideRole,
-      reason: 'Manual Override',
-      source: 'OVERRIDE',
-      note: overrideIncident.note
     }
   }
 
@@ -206,6 +203,9 @@ export function resolveEffectiveDuty(
     return resolved.dates.includes(date)
   })
 
+  // 🛡️ GUARD: Absence vs Base Schedule
+  // AUSENCIA applies only if the day was planned as work.
+  // This protects against future logic where absences might be logged on OFF days (e.g. administrative).
   if (absenceIncident && baseWorks) {
     return {
       shouldWork: false, // Although planned, didn't work

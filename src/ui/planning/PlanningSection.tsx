@@ -396,12 +396,13 @@ export function PlanningSection({ onNavigateToSettings }: { onNavigateToSettings
         day.date,
         incidents,
         allCalendarDaysForRelevantMonths,
-        representatives
+        representatives,
+        effectivePeriods
       )
       data[day.date] = result[activeShift]
     })
     return data
-  }, [weeklyPlan, swaps, coverageRules, weekDays, activeShift])
+  }, [weeklyPlan, swaps, coverageRules, weekDays, activeShift, incidents, effectivePeriods])
 
   const hasAnyCoverageRule = useMemo(() => {
     return Object.values(coverageData).some(d => d.required > 0)

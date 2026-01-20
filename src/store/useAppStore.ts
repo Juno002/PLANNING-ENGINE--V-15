@@ -126,6 +126,7 @@ export type AppState = PlanningBaseState & ManagementScheduleSlice & {
   ) => Promise<{ ok: true; newId: string } | { ok: false; reason: string }>
   removeIncident: (id: string, silent?: boolean) => void
   removeIncidents: (ids: string[]) => void
+  updateIncident: (id: string, updates: Partial<Pick<Incident, 'note' | 'customPoints'>>) => void
   addSwap: (data: Omit<SwapEvent, 'id' | 'createdAt'>) => void
   removeSwap: (id: string) => void
   showConfirm: (options: ConfirmOptions) => Promise<boolean>
@@ -152,6 +153,7 @@ export type AppState = PlanningBaseState & ManagementScheduleSlice & {
 
   // Special Schedule Actions
   addSpecialSchedule: (data: Omit<SpecialSchedule, 'id'>) => void
+  updateSpecialSchedule: (id: string, updates: Partial<Omit<SpecialSchedule, 'id' | 'representativeId'>>) => void
   removeSpecialSchedule: (id: string) => void
 
   // Effective Period Actions
@@ -606,6 +608,15 @@ export const useAppStore = create<AppState>()(
       })
     },
 
+    updateIncident: (id, updates) => {
+      set(state => {
+        const index = state.incidents.findIndex(i => i.id === id)
+        if (index !== -1) {
+          state.incidents[index] = { ...state.incidents[index], ...updates }
+        }
+      })
+    },
+
     addSwap: data => {
       const { addHistoryEvent, representatives, pushUndo } = get()
       const swap = {
@@ -779,6 +790,17 @@ export const useAppStore = create<AppState>()(
           ...data,
         }
         state.specialSchedules.push(newSchedule)
+      })
+    },
+    updateSpecialSchedule: (id, updates) => {
+      set(state => {
+        const index = state.specialSchedules.findIndex(ss => ss.id === id)
+        if (index !== -1) {
+          state.specialSchedules[index] = {
+            ...state.specialSchedules[index],
+            ...updates,
+          }
+        }
       })
     },
     removeSpecialSchedule: id => {
