@@ -8,6 +8,12 @@ jest.mock('nanoid', () => ({
 }))
 
 describe('Coverage Responsibility Invariant (Hostile)', () => {
+    // Shared representatives for lookup
+    const representatives = [
+        { id: 'REP_A', name: 'Rep A' },
+        { id: 'REP_B', name: 'Rep B' }
+    ]
+
     it('assigns absence to covering rep when coverage commitment is not executed', () => {
         /**
          * Scenario:
@@ -44,7 +50,16 @@ describe('Coverage Responsibility Invariant (Hostile)', () => {
             ]
         }
 
-        const snapshot = createWeeklySnapshot(plan, '2026-02-02', 'TEST')
+        const mockCoverage = {
+            id: 'cov-hostile-1',
+            date: '2026-02-02',
+            shift: 'DAY',
+            coveredRepId: 'REP_B',
+            coveringRepId: 'REP_A',
+            status: 'ACTIVE'
+        }
+
+        const snapshot = createWeeklySnapshot(plan, '2026-02-02', 'TEST', [mockCoverage as any], representatives as any)
 
         const repA = snapshot.byRepresentative.find(r => r.repId === 'REP_A')!
         const repB = snapshot.byRepresentative.find(r => r.repId === 'REP_B')!
@@ -59,7 +74,7 @@ describe('Coverage Responsibility Invariant (Hostile)', () => {
         // Rep B is NOT absent
         expect(repB.absenceSlots).toBe(0)
         expect(repB.executedSlots).toBe(0)
-        expect(repB.coveredSlots).toBe(0) // ✅ NOT covered (coverage failed)
+        expect(repB.coveredSlots).toBe(0) // ✅ NOT covered (coverage failed because Rep A didn't work)
 
         // Slot is uncovered
         expect(snapshot.totals.uncoveredSlots).toBe(1)
@@ -102,7 +117,17 @@ describe('Coverage Responsibility Invariant (Hostile)', () => {
             ]
         }
 
-        const snapshot = createWeeklySnapshot(plan, '2026-02-02', 'TEST')
+        const mockCoverage = {
+            id: 'cov-hostile',
+            date: '2026-02-02',
+            shift: 'DAY',
+            coveredRepId: 'REP_B',
+            coveringRepId: 'REP_A',
+            status: 'ACTIVE'
+        }
+
+        // Pass coverage to allow logic to resolve source: COVERAGE
+        const snapshot = createWeeklySnapshot(plan, '2026-02-02', 'TEST', [mockCoverage as any], representatives as any)
 
         const repA = snapshot.byRepresentative.find(r => r.repId === 'REP_A')!
         const repB = snapshot.byRepresentative.find(r => r.repId === 'REP_B')!
@@ -110,6 +135,7 @@ describe('Coverage Responsibility Invariant (Hostile)', () => {
         // Rep A executed their commitment → no absence
         expect(repA.absenceSlots).toBe(0)
         expect(repA.executedSlots).toBe(1)
+        expect(repA.coveringSlots).toBe(1)
 
         // Rep B is covered and not absent
         expect(repB.absenceSlots).toBe(0)
@@ -137,7 +163,7 @@ describe('Coverage Responsibility Invariant (Hostile)', () => {
             ]
         }
 
-        const snapshot = createWeeklySnapshot(plan, '2026-02-02', 'TEST')
+        const snapshot = createWeeklySnapshot(plan, '2026-02-02', 'TEST', [], representatives as any)
 
         const repA = snapshot.byRepresentative.find(r => r.repId === 'REP_A')!
 
@@ -151,5 +177,63 @@ describe('Coverage Responsibility Invariant (Hostile)', () => {
         // Invariant: Planned = Executed + Absences + Covered + Uncovered
         // 1 = 0 + 1 + 0 + 0 ✅
         expect(snapshot.totals.uncoveredSlots).toBe(0)
+    })
+
+    // DOUBLE JEOPARDY TEST: Covering Rep has Base Assignment AND Coverage Duty
+    it('handles base assignment + coverage duty without double counting', () => {
+        const plan: WeeklyPlan = {
+            weekStart: '2026-02-02',
+            agents: [
+                {
+                    representativeId: 'REP_A', // Covering + Own Shift
+                    days: {
+                        '2026-02-02': {
+                            status: 'WORKING', // Worked
+                            assignment: { type: 'SINGLE', shift: 'DAY' }, // Own shift
+                            badge: 'CUBRIENDO',
+                            source: 'BASE'
+                        }
+                    }
+                },
+                {
+                    representativeId: 'REP_B', // Owner
+                    days: {
+                        '2026-02-02': {
+                            status: 'OFF',
+                            assignment: { type: 'SINGLE', shift: 'DAY' },
+                            badge: 'CUBIERTO',
+                            source: 'BASE'
+                        }
+                    }
+                }
+            ]
+        }
+
+        const mockCoverage = {
+            id: 'cov-double',
+            date: '2026-02-02',
+            shift: 'DAY',
+            coveredRepId: 'REP_B',
+            coveringRepId: 'REP_A',
+            status: 'ACTIVE'
+        }
+
+        const snapshot = createWeeklySnapshot(plan, '2026-02-02', 'TEST', [mockCoverage as any], representatives as any)
+        const repA = snapshot.byRepresentative.find(r => r.repId === 'REP_A')!
+        const repB = snapshot.byRepresentative.find(r => r.repId === 'REP_B')!
+
+        // Rep A:
+        // Planned: 1 (Own shift)
+        // Executed: 1 (Own shift executed)
+        // Covering: 1 (Coverage executed) - BUT executed count should NOT increase again for this.
+
+        expect(repA.plannedSlots).toBe(1)
+        expect(repA.executedSlots).toBe(1) // Not 2!
+        expect(repA.coveringSlots).toBe(1)
+
+        // Rep B:
+        // CUBIERTO - Successfully covered because A worked.
+        expect(repB.coveredSlots).toBe(1)
+        expect(repB.uncoveredSlots).toBe(0)
     })
 })

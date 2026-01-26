@@ -5,6 +5,7 @@ import { useAuditStore } from '@/store/useAuditStore'
 import { useWeeklySnapshotStore } from '@/store/useWeeklySnapshotStore'
 import { AuditTimeline } from './AuditTimeline'
 import { useAppStore } from '@/store/useAppStore'
+import { useCoverageStore } from '@/store/useCoverageStore'
 import { createWeeklySnapshot } from '@/application/audit/createWeeklySnapshot'
 import { signSnapshotChain } from '@/application/audit/signSnapshotChain'
 import { verifySnapshotChain } from '@/application/audit/verifySnapshotChain'
@@ -76,13 +77,16 @@ export function AuditDashboard() {
         getLatestSnapshot: s.getLatestSnapshot
     }))
 
-    const { representatives, incidents, specialSchedules, allCalendarDaysForRelevantMonths, planningAnchorDate } = useAppStore(s => ({
+    const { representatives, incidents, specialSchedules, allCalendarDaysForRelevantMonths, planningAnchorDate, swaps } = useAppStore(s => ({
         representatives: s.representatives,
         incidents: s.incidents,
         specialSchedules: s.specialSchedules,
         allCalendarDaysForRelevantMonths: s.allCalendarDaysForRelevantMonths,
-        planningAnchorDate: s.planningAnchorDate
+        planningAnchorDate: s.planningAnchorDate,
+        swaps: s.swaps
     }))
+
+    const coverages = useCoverageStore(s => s.coverages)
 
     const orderedSnapshots = useMemo(
         () => [...snapshots].sort((a, b) => {
@@ -127,7 +131,7 @@ export function AuditDashboard() {
             )
 
             // 2. Create Snapshot Domain Object
-            const snapshot = createWeeklySnapshot(plan, weekStart, 'SYSTEM')
+            const snapshot = createWeeklySnapshot(plan, weekStart, 'SYSTEM', coverages, representatives)
 
             // 3. 🔗 CHAIN LOGIC: Get Previous Signature
             const latest = getLatestSnapshot()

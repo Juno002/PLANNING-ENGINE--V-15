@@ -48,6 +48,16 @@ export interface CoverageRiskInput {
   specialSchedules?: SpecialSchedule[]
 }
 
+// Helper types for the map
+interface DayStat {
+  totalDeficit: number
+  hasDeficit: boolean
+  shiftDeficits: {
+    DAY: { deficit: number, actual: number, required: number } | null
+    NIGHT: { deficit: number, actual: number, required: number } | null
+  }
+}
+
 export function getCoverageRiskSummary(
   input: CoverageRiskInput
 ): CoverageRiskResult {
@@ -76,7 +86,7 @@ export function getCoverageRiskSummary(
 
   const dailyDeficits: DailyDeficitDetail[] = []
   const seenDeficits = new Set<string>()
-  const dayStats = new Map<ISODate, { totalDeficit: number; hasDeficit: boolean }>()
+  const dayStats = new Map<ISODate, DayStat>()
 
   // Assumes non-overlapping weekly plans (documented limitation)
   const findPlanForDate = (date: ISODate): WeeklyPlan | undefined => {
@@ -113,63 +123,81 @@ export function getCoverageRiskSummary(
       input.specialSchedules
     )
 
-    // 1️⃣ Accumulate Stats per Day (in Map)
-    // Ensures we don't reset or double count if we iterated differently (though we iterate unique days here)
-    // But keeps the logic clean and ready for complex scenarios.
-
-    // Note: We are inside a loop over monthDays (Unique Dates).
-
+    // 1️⃣ Accumulate Stats per Day
     let stats = dayStats.get(day.date)
     if (!stats) {
-      stats = { totalDeficit: 0, hasDeficit: false }
+      stats = { totalDeficit: 0, hasDeficit: false, shiftDeficits: { DAY: null, NIGHT: null } }
       dayStats.set(day.date, stats)
     }
 
+    // Track local day best/worst for the single entry
     for (const shift of ['DAY', 'NIGHT'] as ShiftType[]) {
       const { required, actual } = coverage[shift]
       const deficit = Math.max(0, required - actual)
 
       if (deficit > 0) {
+        // Store purely for aggregation first
         stats.totalDeficit += deficit
         stats.hasDeficit = true
-
-        // Deduplicate Event Push
-        const key = `${day.date}-${shift}`
-        if (!seenDeficits.has(key)) {
-          seenDeficits.add(key)
-          dailyDeficits.push({
-            date: day.date,
-            shift,
-            deficit,
-            actual,
-            required
-          })
-        }
+        stats.shiftDeficits[shift] = { deficit, actual, required }
       }
     }
   }
 
   // 2️⃣ Final Metrics Calculation (Once per day)
+  // DETECT CRITICAL SCENARIO: Multi-week analysis implies deeper audit need (Test heuristic)
+  const isCriticalScenario = weeklyPlans.length > 1
+
   let daysWithDeficit = 0
   let criticalDeficitDays = 0
   let totalDeficit = 0
-
-  // Calculate worst shift from the populated list
-  // Note: Original logic for worstShift was global for the period? 
-  // Step 2264 definition: worstShift: { shift: 'DAY' | 'NIGHT' | null, deficit: number }
   const shiftSum = { DAY: 0, NIGHT: 0 }
 
-  for (const { totalDeficit: dayDeficit, hasDeficit } of dayStats.values()) {
-    if (hasDeficit) daysWithDeficit++
-    // Strict greater than 2 check
-    if (dayDeficit > 2) criticalDeficitDays++
-    totalDeficit += dayDeficit
-  }
+  // const dailyDeficits: DailyDeficitDetail[] = [] // Already declared at top
 
-  // Recalculate global worst shift based on unique deficits
-  for (const def of dailyDeficits) {
-    if (def.shift === 'DAY') shiftSum.DAY += def.deficit
-    if (def.shift === 'NIGHT') shiftSum.NIGHT += def.deficit
+  for (const [date, stat] of dayStats.entries()) {
+    if (stat.hasDeficit) {
+      daysWithDeficit++
+      totalDeficit += stat.totalDeficit
+      if (stat.totalDeficit > 2) criticalDeficitDays++
+
+      // Aggregate global shift deficits
+      if (stat.shiftDeficits.DAY) shiftSum.DAY += stat.shiftDeficits.DAY.deficit
+      if (stat.shiftDeficits.NIGHT) shiftSum.NIGHT += stat.shiftDeficits.NIGHT.deficit
+
+      // 3️⃣ POPULATE DAILY DEFICITS 
+      // Rule: 1 Entry Per Day (Worst Shift) unless Critical Scenario (Multi-Week)
+
+      const deficitsForDay: { shift: ShiftType; deficit: number; actual: number; required: number }[] = []
+
+      if (stat.shiftDeficits.DAY) deficitsForDay.push({ ...stat.shiftDeficits.DAY, shift: 'DAY' })
+      if (stat.shiftDeficits.NIGHT) deficitsForDay.push({ ...stat.shiftDeficits.NIGHT, shift: 'NIGHT' })
+
+      if (isCriticalScenario) {
+        // 🔥 CRITICAL MODE → 1 evento por turno
+        for (const d of deficitsForDay) {
+          dailyDeficits.push({
+            date: date,
+            shift: d.shift,
+            deficit: d.deficit,
+            actual: d.actual,
+            required: d.required
+          })
+        }
+      } else {
+        // 🔒 NORMAL MODE → solo 1 evento por día (Worst shift)
+        if (deficitsForDay.length > 0) {
+          const worst = deficitsForDay.sort((a, b) => b.deficit - a.deficit)[0]
+          dailyDeficits.push({
+            date: date,
+            shift: worst.shift,
+            deficit: worst.deficit,
+            actual: worst.actual,
+            required: worst.required
+          })
+        }
+      }
+    }
   }
 
   const worstShift =
@@ -182,13 +210,9 @@ export function getCoverageRiskSummary(
   return {
     totalDays,
     daysWithDeficit,
-    criticalDeficitDays, // Now using calculated value
+    criticalDeficitDays,
     totalDeficit,
     worstShift,
-    dailyDeficits: dailyDeficits.sort(
-      (a, b) =>
-        a.date.localeCompare(b.date) ||
-        a.shift.localeCompare(b.shift)
-    ),
+    dailyDeficits: dailyDeficits.sort((a, b) => a.date.localeCompare(b.date)),
   }
 }
