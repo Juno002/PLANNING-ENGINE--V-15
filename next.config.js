@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  // Removido: output: 'export',
   reactStrictMode: true,
 
   // IMPORTANTE para PWA
