@@ -75,9 +75,8 @@ export function getCoverageRiskSummary(
   }
 
   const dailyDeficits: DailyDeficitDetail[] = []
-  const daysWithDeficitSet = new Set<ISODate>()
-  const criticalDaysSet = new Set<ISODate>()
-  const shiftDeficits = { DAY: 0, NIGHT: 0 }
+  const seenDeficits = new Set<string>()
+  const dayStats = new Map<ISODate, { totalDeficit: number; hasDeficit: boolean }>()
 
   // Assumes non-overlapping weekly plans (documented limitation)
   const findPlanForDate = (date: ISODate): WeeklyPlan | undefined => {
@@ -96,15 +95,12 @@ export function getCoverageRiskSummary(
   // - Others expect all days in plan range regardless of assignments
   // Current implementation achieves 5/7 tests passing with dual-mode guard.
   // Full resolution requires semantic refactor or explicit mode flags.
-
   for (const day of monthDays) {
     const plan = findPlanForDate(day.date)
-    if (!plan) continue // not an operational day
+    if (!plan) continue // skip if date is outside any plan range    // We evaluate the day if a plan exists for this week.
+    // Logic: If plan exists + rules exist = deficit check.
 
-    // We evaluate the day if a plan exists for this week.
-    // Even if no specific agent has an assignment for this day, it is an operational day (with 0 coverage).
-    const isOperationalDay = true
-    if (!isOperationalDay) continue
+    // We already found the plan for this date (line 101).
 
     const coverage = getEffectiveDailyCoverage(
       plan,
@@ -117,54 +113,77 @@ export function getCoverageRiskSummary(
       input.specialSchedules
     )
 
-    // ⚠️ CONTRACT AMBIGUITY WARNING (Operational vs Statistical Semantics)
-    // Logic is valid but complex. Do not refactor without explicit definition.
+    // 1️⃣ Accumulate Stats per Day (in Map)
+    // Ensures we don't reset or double count if we iterated differently (though we iterate unique days here)
+    // But keeps the logic clean and ready for complex scenarios.
 
-    let dailyTotalDeficit = 0
-    let dayHadDeficit = false
+    // Note: We are inside a loop over monthDays (Unique Dates).
 
-    // 1. Calculate Daily Total FIRST
+    let stats = dayStats.get(day.date)
+    if (!stats) {
+      stats = { totalDeficit: 0, hasDeficit: false }
+      dayStats.set(day.date, stats)
+    }
+
     for (const shift of ['DAY', 'NIGHT'] as ShiftType[]) {
       const { required, actual } = coverage[shift]
       const deficit = Math.max(0, required - actual)
 
       if (deficit > 0) {
-        dayHadDeficit = true
-        dailyTotalDeficit += deficit
-        shiftDeficits[shift] += deficit
+        stats.totalDeficit += deficit
+        stats.hasDeficit = true
 
-        dailyDeficits.push({
-          date: day.date,
-          shift,
-          deficit,
-          actual,
-          required,
-        })
+        // Deduplicate Event Push
+        const key = `${day.date}-${shift}`
+        if (!seenDeficits.has(key)) {
+          seenDeficits.add(key)
+          dailyDeficits.push({
+            date: day.date,
+            shift,
+            deficit,
+            actual,
+            required
+          })
+        }
       }
-    }
-
-    // 2. Evaluate Day-Level Metrics
-    if (dayHadDeficit) {
-      daysWithDeficitSet.add(day.date)
-    }
-
-    if (dailyTotalDeficit > 2) {
-      criticalDaysSet.add(day.date)
     }
   }
 
+  // 2️⃣ Final Metrics Calculation (Once per day)
+  let daysWithDeficit = 0
+  let criticalDeficitDays = 0
+  let totalDeficit = 0
+
+  // Calculate worst shift from the populated list
+  // Note: Original logic for worstShift was global for the period? 
+  // Step 2264 definition: worstShift: { shift: 'DAY' | 'NIGHT' | null, deficit: number }
+  const shiftSum = { DAY: 0, NIGHT: 0 }
+
+  for (const { totalDeficit: dayDeficit, hasDeficit } of dayStats.values()) {
+    if (hasDeficit) daysWithDeficit++
+    // Strict greater than 2 check
+    if (dayDeficit > 2) criticalDeficitDays++
+    totalDeficit += dayDeficit
+  }
+
+  // Recalculate global worst shift based on unique deficits
+  for (const def of dailyDeficits) {
+    if (def.shift === 'DAY') shiftSum.DAY += def.deficit
+    if (def.shift === 'NIGHT') shiftSum.NIGHT += def.deficit
+  }
+
   const worstShift =
-    shiftDeficits.DAY > shiftDeficits.NIGHT
-      ? { shift: 'DAY' as const, deficit: shiftDeficits.DAY }
-      : shiftDeficits.NIGHT > 0
-        ? { shift: 'NIGHT' as const, deficit: shiftDeficits.NIGHT }
+    shiftSum.DAY > shiftSum.NIGHT
+      ? { shift: 'DAY' as const, deficit: shiftSum.DAY }
+      : shiftSum.NIGHT > 0
+        ? { shift: 'NIGHT' as const, deficit: shiftSum.NIGHT }
         : { shift: null, deficit: 0 }
 
   return {
     totalDays,
-    daysWithDeficit: daysWithDeficitSet.size,
-    criticalDeficitDays: criticalDaysSet.size,
-    totalDeficit: shiftDeficits.DAY + shiftDeficits.NIGHT,
+    daysWithDeficit,
+    criticalDeficitDays, // Now using calculated value
+    totalDeficit,
     worstShift,
     dailyDeficits: dailyDeficits.sort(
       (a, b) =>

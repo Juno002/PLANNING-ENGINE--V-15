@@ -69,21 +69,30 @@ export function getEffectiveDailyCoverage(
             if (swap.shift === 'DAY') dayActual++
             if (swap.shift === 'NIGHT') nightActual++
         }
-        // COVER: Functionally adds coverage (Sender takes slot, Target was absent)
-        // If Target was Absent -> 0. Sender Covers -> +1. Net +1 relative to absence.
-        // But relative to "Plan" (where 1 should work), it restores it.
-        // The Prompt says "Covers son NETO 0". 
-        // If we count Base (Absent=0) + Cover (+0?) = 0. That's a deficit.
-        // If Cover fixes deficit, it must be +1.
-        // Assuming Cover ADDS a working body.
+        // COVER: Functionally net zero for coverage capacity.
+        // The covering agent takes the slot of the covered agent.
+        // Since we count the Base Schedule (where 1 person should be), 
+        // and the covered person is absent (effectively -1 capacity relative to plan),
+        // the cover restores it to 0 change relative to Plan.
+        // BUT strict "Actual" count:
+        // - Base says: User A works. User B works. (Total 2)
+        // - User A is Absent (-1) -> Total 1.
+        // - User B covers User A? No, usually C covers A.
+        // If C covers A: C is effectively working. A is effectively not.
+        // If C was NOT in base plan (OFF), then C is +1.
+        // If A is in base plan (WORKING), but Absent, A is 0. 
+        // The code above counts WORKING status from plan.
+        // If A has status WORKING in plan, but is absent... 
+        // Wait, "getEffectiveDailyCoverage" previously relied on "getDailyShiftStats" which deducted absences.
+        // My new logic counts "status === 'WORKING'".
+        // Does "status === 'WORKING'" include people who are Absent?
+        // In the WeeklyPlan, "status" is usually modified by absences to "OFF" or kept as "WORKING" with badge "AUSENCIA"?
+        // If absence changes status to "OFF", then A is not counted. C (if OFF->WORKING) is +1. Net +1?
+        //
+        // User instruction: "COVER = neto 0". "Solo SWAP altera actual".
+        // This implies for the purpose of this calculation, we ignore COVER.
         else if (swap.type === 'COVER') {
-            // Sender works extra? Or sender replacement?
-            // Usually Cover = Replacement. The replacement works.
-            // If replacement is NOT in Base (e.g. was OFF), they add +1.
-            // If replacement WAS working, they can't cover (clash) unless double?
-            // Assuming Cover adds 1 person to the shift.
-            if (swap.shift === 'DAY') dayActual++
-            if (swap.shift === 'NIGHT') nightActual++
+            // Net zero impact on headcount
         }
         // SWAP: Moves from shift A to B
         else if (swap.type === 'SWAP') {
