@@ -2,26 +2,32 @@ import { getEffectiveDailyLogData } from '../getEffectiveDailyLogData'
 import { WeeklyPlan, SwapEvent, Incident, DayInfo, Representative } from '@/domain/types'
 
 const mockPlan: WeeklyPlan = {
-    id: 'w1', weekStart: '2026-01-05',
+    weekStart: '2026-01-05',
     agents: [
         {
             representativeId: 'A',
-            days: { '2026-01-08': { assignment: { type: 'SINGLE', shift: 'DAY' } } }
+            days: { '2026-01-08': { status: 'WORKING', source: 'BASE', assignment: { type: 'SINGLE', shift: 'DAY' } } }
         },
         {
             representativeId: 'B',
-            days: { '2026-01-08': { assignment: { type: 'NONE' } } }
+            days: { '2026-01-08': { status: 'OFF', source: 'BASE', assignment: { type: 'NONE' } } }
         }
     ]
 }
 
 const mockCalendarDays: DayInfo[] = [
-    { date: '2026-01-08', isWorkingDay: true, isWeekend: false, label: 'Thu 8', kind: 'WORKING' }
+    { date: '2026-01-08', dayOfWeek: 4, isSpecial: false, kind: 'WORKING' }
 ]
 
 const mockRepresentatives: Representative[] = [
-    { id: 'A', name: 'Agent A', baseShift: 'DAY', baseSchedule: ['DAY', 'DAY', 'DAY', 'DAY', 'DAY', 'OFF', 'OFF'] },
-    { id: 'B', name: 'Agent B', baseShift: 'NIGHT', baseSchedule: ['NIGHT', 'NIGHT', 'NIGHT', 'NIGHT', 'NIGHT', 'OFF', 'OFF'] }
+    {
+        id: 'A', name: 'Agent A', role: 'SALES', isActive: true, orderIndex: 0, baseShift: 'DAY',
+        baseSchedule: { 1: 'WORKING', 2: 'WORKING', 3: 'WORKING', 4: 'WORKING', 5: 'WORKING', 6: 'OFF', 0: 'OFF' }
+    },
+    {
+        id: 'B', name: 'Agent B', role: 'SALES', isActive: true, orderIndex: 1, baseShift: 'NIGHT',
+        baseSchedule: { 1: 'WORKING', 2: 'WORKING', 3: 'WORKING', 4: 'WORKING', 5: 'WORKING', 6: 'OFF', 0: 'OFF' }
+    }
 ]
 
 describe('getEffectiveDailyLogData', () => {

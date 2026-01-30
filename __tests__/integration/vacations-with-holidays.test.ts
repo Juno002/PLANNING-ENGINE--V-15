@@ -25,6 +25,9 @@ describe('Integration: Vacaciones con Feriados Marcados desde UI', () => {
       6: 'WORKING',
     },
     baseShift: 'DAY',
+    role: 'SALES',
+    isActive: true,
+    orderIndex: 0,
   }
 
   it('Flujo completo: Marcar feriado en UI y calcular vacaciones', () => {
@@ -34,12 +37,12 @@ describe('Integration: Vacaciones con Feriados Marcados desde UI', () => {
     }
 
     // PASO 2: Usuario marca el 15 de enero como feriado desde el planner
-    const feriadoAgregado = { 
-      date: '2025-01-15', 
-      kind: 'HOLIDAY' as const, 
-      label: 'Día de MLK' 
+    const feriadoAgregado = {
+      date: '2025-01-15',
+      kind: 'HOLIDAY' as const,
+      label: 'Día de MLK'
     }
-    
+
     // Simular la acción addOrUpdateSpecialDay
     calendarState.specialDays.push(feriadoAgregado)
 
@@ -68,8 +71,8 @@ describe('Integration: Vacaciones con Feriados Marcados desde UI', () => {
 
     // PASO 5: El sistema calcula las fechas de las vacaciones
     const result = resolveIncidentDates(
-      vacacionesIncident, 
-      allCalendarDays, 
+      vacacionesIncident,
+      allCalendarDays,
       mockRep
     )
 
@@ -98,14 +101,14 @@ describe('Integration: Vacaciones con Feriados Marcados desde UI', () => {
 
     // 4. Verificar que la duración calendario es mayor que 14 días
     // porque se saltaron el feriado y los domingos
-    const daysDuration = result.dates.length > 0 
+    const daysDuration = result.dates.length > 0
       ? Math.ceil(
-          (new Date(result.end + 'T00:00:00Z').getTime() - 
-           new Date(result.start + 'T00:00:00Z').getTime()) / 
-          (1000 * 60 * 60 * 24)
-        ) + 1
+        (new Date(result.end + 'T00:00:00Z').getTime() -
+          new Date(result.start + 'T00:00:00Z').getTime()) /
+        (1000 * 60 * 60 * 24)
+      ) + 1
       : 0
-    
+
     expect(daysDuration).toBeGreaterThan(14)
     console.log(`✓ Duración calendario: ${daysDuration} días (mayor que 14 días laborales)`)
   })

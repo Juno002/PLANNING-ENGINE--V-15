@@ -31,7 +31,7 @@ export function AuditRow({ event }: { event: AuditEvent }) {
         })}
       </td>
       <td style={{ ...cellStyle, fontWeight: 500 }}>
-        {event.actor}
+        {typeof event.actor === 'string' ? event.actor : event.actor.name}
         {event.repId && (
           <div style={{ fontSize: 11, color: '#6b7280' }}>
             Rep: {event.repId}
@@ -39,7 +39,7 @@ export function AuditRow({ event }: { event: AuditEvent }) {
         )}
       </td>
       <td style={cellStyle}>
-        <AuditActionBadge action={event.type} />
+        <AuditActionBadge action={event.type || 'UNKNOWN'} />
       </td>
       <td style={cellStyle}>
         <div style={{ fontWeight: 500 }}>{event.type}</div>

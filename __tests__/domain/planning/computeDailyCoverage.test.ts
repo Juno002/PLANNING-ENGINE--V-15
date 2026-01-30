@@ -4,15 +4,18 @@ import { AssignmentContext } from '../../../src/domain/planning/shiftAssignment'
 
 describe('computeDailyCoverage', () => {
   const reps: Representative[] = [
-    { id: 'r1', name: 'Día', baseShift: 'DAY', baseSchedule: {} },
+    { id: 'r1', name: 'Día', baseShift: 'DAY', baseSchedule: {}, role: 'SALES', isActive: true, orderIndex: 0 },
     {
       id: 'r2',
       name: 'Mixto Semana',
       baseShift: 'DAY',
       mixProfile: { type: 'WEEKDAY' },
       baseSchedule: {},
+      role: 'SALES',
+      isActive: true,
+      orderIndex: 0,
     },
-    { id: 'r3', name: 'Noche', baseShift: 'NIGHT', baseSchedule: {} },
+    { id: 'r3', name: 'Noche', baseShift: 'NIGHT', baseSchedule: {}, role: 'SALES', isActive: true, orderIndex: 0 },
   ]
 
   const contexts: Record<string, AssignmentContext> = {
@@ -46,7 +49,7 @@ describe('computeDailyCoverage', () => {
       ...contexts,
       r2: {
         ...contexts.r2,
-        availability: 'UNAVAILABLE',
+        availability: 'UNAVAILABLE' as const,
       },
     }
 

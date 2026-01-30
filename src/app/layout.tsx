@@ -1,6 +1,7 @@
 // force-refresh
 import type { Metadata, Viewport } from 'next'
 import ClientLayout from './ClientLayout'
+import './globals.css'
 import '../ui/theme/theme.css'
 
 export const metadata: Metadata = {

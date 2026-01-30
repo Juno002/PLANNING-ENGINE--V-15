@@ -32,7 +32,7 @@ export interface EffectiveDutyResult {
   role: EffectiveDutyRole
   reason?: string // Semantic reason e.g., VACACIONES, AUSENCIA
   partnerId?: RepresentativeId // The other person in the transaction
-  source?: 'BASE' | 'OVERRIDE' | 'EFFECTIVE_PERIOD' | 'INCIDENT' | 'SWAP'
+  source: 'BASE' | 'OVERRIDE' | 'EFFECTIVE_PERIOD' | 'INCIDENT' | 'SWAP'
   note?: string
   details?: string
 }
@@ -97,7 +97,7 @@ export function resolveEffectiveDuty(
   const representative = representatives.find(r => r.id === representativeId)
   if (!representative) {
     // Fallback / Error handling
-    return { shouldWork: false, role: 'NONE', reason: 'Representative not found' }
+    return { shouldWork: false, role: 'NONE', reason: 'Representative not found', source: 'BASE' }
   }
 
   const effective = getEffectiveSchedule({

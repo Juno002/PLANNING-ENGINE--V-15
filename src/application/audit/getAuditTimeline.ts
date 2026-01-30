@@ -55,7 +55,7 @@ export function mapAuditEventsToTimeline(
                 id: e.id,
                 timestamp: e.timestamp,
                 type: e.type,
-                actor: e.actor,
+                actor: typeof e.actor === 'string' ? e.actor : e.actor.name,
                 summary,
                 details
             }
@@ -71,6 +71,6 @@ function formatEventType(type: AuditEvent['type']): string {
         case 'SWAP_APPLIED': return 'Intercambio aplicado'
         case 'OVERRIDE_APPLIED': return 'Modificación manual'
         case 'SNAPSHOT_CREATED': return 'Snapshot creado'
-        default: return type
+        default: return type || 'Unknown Event'
     }
 }

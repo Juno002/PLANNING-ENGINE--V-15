@@ -473,7 +473,9 @@ export function DailyEventsList({
             key={group.type}
             group={group}
             onDeleteSingle={(id) => {
-              const incident = group.people?.flatMap(p => p.incidents).find(i => i.id === id)
+              // 🛡️ FIX: Look in 'items' (OTRO) AND 'people' (Standard)
+              // Or simply search the main incidents list which is safer and O(N) is negligible here.
+              const incident = incidents.find(i => i.id === id)
               if (incident) handleDeleteSingle(incident)
             }}
             onDeleteGroup={(ids) => {

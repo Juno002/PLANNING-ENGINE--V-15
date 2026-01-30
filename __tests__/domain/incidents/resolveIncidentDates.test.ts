@@ -8,11 +8,11 @@ describe('Domain Logic Bugs Reproduction', () => {
   const mockRep: Representative = {
     id: 'r1',
     name: 'Test Rep',
-    baseSchedule: { 0: 'OFF', 1: 'DAY', 2: 'DAY', 3: 'DAY', 4: 'DAY', 5: 'DAY', 6: 'OFF' }, // Sun=0, Sat=6
+    baseSchedule: { 0: 'OFF', 1: 'WORKING', 2: 'WORKING', 3: 'WORKING', 4: 'WORKING', 5: 'WORKING', 6: 'OFF' }, // Sun=0, Sat=6
     baseShift: 'DAY',
     role: 'SALES',
     isActive: true,
-    orderIndex: 1
+    orderIndex: 0,
   }
 
   const createDay = (date: string, kind: 'Day' | 'HOLIDAY' | 'Weekend', note: string): DayInfo => ({

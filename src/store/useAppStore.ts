@@ -26,10 +26,15 @@ import {
   getYear,
   getMonth,
   addDays,
+  addMonths,
   parseISO,
   format,
   startOfWeek,
 } from 'date-fns'
+
+// ... existing code ...
+
+
 import { generateMonthDays } from '@/domain/calendar/state'
 import { validateIncident } from '@/domain/incidents/validateIncident'
 import { resolveIncidentDates } from '@/domain/incidents/resolveIncidentDates'
@@ -293,7 +298,7 @@ export const useAppStore = create<AppState>()(
         const anchor = new Date(state.planningAnchorDate + 'T12:00:00Z')
         const allDays = new Map<string, DayInfo>()
         for (let i = -6; i <= 18; i++) {
-          const dateToGenerate = addDays(anchor, i * 30)
+          const dateToGenerate = addMonths(anchor, i)
           const year = getYear(dateToGenerate)
           const month = getMonth(dateToGenerate) + 1
           const monthDays = generateMonthDays(year, month, state.calendar)

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useAppStore } from '@/store/useAppStore'
 import { PlanningSection } from './planning/PlanningSection'
 import { DailyLogView } from './logs/DailyLogView'
@@ -141,6 +142,7 @@ function AppShellInner() {
           >
             Planificación
           </button>
+
           <button
             style={viewTabStyle(activeView === 'STATS')}
             onClick={() => setActiveView('STATS')}

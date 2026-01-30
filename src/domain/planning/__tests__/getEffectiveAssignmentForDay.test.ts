@@ -46,7 +46,7 @@ describe('getEffectiveAssignmentForDay', () => {
         shift: 'DAY',
         fromRepresentativeId: 'rep-a',
         toRepresentativeId: 'rep-b',
-        createdAt: Date.now(),
+        createdAt: new Date().toISOString(),
       }
 
       // fromRep: trabajaba DAY, ahora OFF
@@ -77,7 +77,7 @@ describe('getEffectiveAssignmentForDay', () => {
         date: '2026-01-15',
         shift: 'NIGHT',
         representativeId: 'rep-a',
-        createdAt: Date.now(),
+        createdAt: new Date().toISOString(),
       }
 
       // Rep estaba OFF, ahora trabaja NIGHT
@@ -101,7 +101,7 @@ describe('getEffectiveAssignmentForDay', () => {
         toRepresentativeId: 'rep-b',
         fromShift: 'DAY',
         toShift: 'NIGHT',
-        createdAt: Date.now(),
+        createdAt: new Date().toISOString(),
       }
 
       // rep-a: trabajaba DAY, ahora NIGHT
@@ -134,7 +134,7 @@ describe('getEffectiveAssignmentForDay', () => {
           shift: 'DAY',
           fromRepresentativeId: 'rep-a',
           toRepresentativeId: 'rep-b',
-          createdAt: Date.now(),
+          createdAt: new Date().toISOString(),
         },
         {
           id: 'swap-2',
@@ -142,7 +142,7 @@ describe('getEffectiveAssignmentForDay', () => {
           date: '2026-01-15',
           shift: 'NIGHT',
           representativeId: 'rep-b',
-          createdAt: Date.now() + 1,
+          createdAt: new Date(Date.now() + 1).toISOString(),
         },
       ]
 

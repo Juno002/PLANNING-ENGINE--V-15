@@ -16,7 +16,7 @@ describe('getSwapForCell', () => {
       shift: 'DAY',
       fromRepresentativeId: 'rep-a',
       toRepresentativeId: 'rep-b',
-      createdAt: Date.now(),
+      createdAt: new Date().toISOString(),
     },
     {
       id: 'swap-2',
@@ -24,7 +24,7 @@ describe('getSwapForCell', () => {
       date: '2026-01-15',
       shift: 'NIGHT',
       representativeId: 'rep-c',
-      createdAt: Date.now(),
+      createdAt: new Date().toISOString(),
     },
     {
       id: 'swap-3',
@@ -34,7 +34,7 @@ describe('getSwapForCell', () => {
       toRepresentativeId: 'rep-d',
       fromShift: 'DAY',
       toShift: 'NIGHT',
-      createdAt: Date.now(),
+      createdAt: new Date().toISOString(),
     },
   ]
 
@@ -181,7 +181,7 @@ describe('getSwapForCell', () => {
           shift: 'DAY',
           fromRepresentativeId: 'rep-a',
           toRepresentativeId: 'rep-b',
-          createdAt: Date.now(),
+          createdAt: new Date().toISOString(),
         },
         {
           id: 'second',
@@ -189,7 +189,7 @@ describe('getSwapForCell', () => {
           date: '2026-01-15',
           shift: 'DAY',
           representativeId: 'rep-a',
-          createdAt: Date.now(),
+          createdAt: new Date().toISOString(),
         },
       ]
 

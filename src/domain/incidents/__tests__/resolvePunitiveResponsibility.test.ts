@@ -2,15 +2,15 @@ import { resolvePunitiveResponsibility } from '../resolvePunitiveResponsibility'
 import { WeeklyPlan, SwapEvent } from '@/domain/types'
 
 const mockPlan: WeeklyPlan = {
-    id: 'w1', weekStart: '2026-01-05',
+    weekStart: '2026-01-05',
     agents: [
         {
             representativeId: 'A',
-            days: { '2026-01-10': { assignment: { type: 'SINGLE', shift: 'DAY' } } }
+            days: { '2026-01-10': { status: 'WORKING', source: 'BASE', assignment: { type: 'SINGLE', shift: 'DAY' } } }
         },
         {
             representativeId: 'B',
-            days: { '2026-01-10': { assignment: { type: 'NONE' } } }
+            days: { '2026-01-10': { status: 'OFF', source: 'BASE', assignment: { type: 'NONE' } } }
         }
     ]
 }

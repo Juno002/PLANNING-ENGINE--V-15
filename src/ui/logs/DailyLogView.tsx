@@ -41,7 +41,6 @@ import { CoverageAbsenceModal } from './CoverageAbsenceModal' // 🎯 SLOT RESPO
 import { resolveSlotResponsibility } from '@/domain/planning/resolveSlotResponsibility' // 🎯 SLOT RESPONSIBILITY
 import type { ResponsibilityResolution } from '@/domain/planning/slotResponsibility' // 🎯 SLOT RESPONSIBILITY
 import {
-  getEffectiveDailyLogData,
   DailyLogEntry,
   LogStatus
 } from '@/application/ui-adapters/getEffectiveDailyLogData'
@@ -256,7 +255,11 @@ export function DailyLogView() {
 
     return plannedAgentsForShift
       .map(p => repMap.get(p.representativeId))
-      .filter((r): r is Representative => !!r && r.isActive)
+      .filter((r): r is Representative =>
+        !!r &&
+        r.isActive &&
+        !isSlotOperationallyEmpty(r.id, logDate, activeShift, incidents)
+      )
   }, [
     isAdministrativeIncident,
     representatives,
