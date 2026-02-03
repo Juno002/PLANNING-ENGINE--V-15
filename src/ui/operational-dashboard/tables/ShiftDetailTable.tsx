@@ -49,11 +49,11 @@ export default function ShiftDetailTable({ title, data }: ShiftDetailTableProps)
                 <TableHead>Hora</TableHead>
                 <TableHead>Recibidas</TableHead>
                 <TableHead>Contestadas</TableHead>
-                <TableHead>ConexiÃƒÂ³n</TableHead>
+                <TableHead>Conexión</TableHead>
                 <TableHead>AVG time</TableHead>
-                <TableHead>% AtenciÃƒÂ³n</TableHead>
+                <TableHead>% Atención</TableHead>
                 <TableHead>Abandonadas</TableHead>
-                <TableHead>ConexiÃƒÂ³n</TableHead>
+                <TableHead>Conexión</TableHead>
                 <TableHead>AVG time Aband.</TableHead>
                 <TableHead>% Abandono</TableHead>
               </TableRow>

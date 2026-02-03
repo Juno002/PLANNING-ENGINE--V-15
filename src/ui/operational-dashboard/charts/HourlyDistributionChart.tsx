@@ -39,7 +39,7 @@ export default function HourlyDistributionChart() {
     transactions
   );
   const chartDetails =
-    hourlyChartShift === 'DÃ­a' ? timeSlotData.day : timeSlotData.night;
+    hourlyChartShift === 'Dí­a' ? timeSlotData.day : timeSlotData.night;
 
   const data = {
     labels: chartDetails.map((s) => s.hora),
@@ -93,13 +93,13 @@ export default function HourlyDistributionChart() {
     <Card>
       <CardHeader>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <CardTitle>DistribuciÃƒÂ³n de llamadas por hora</CardTitle>
+          <CardTitle>Distribución de llamadas por hora</CardTitle>
           <PillToggleContainer>
             <PillButton
-              onClick={() => setHourlyChartShift('DÃ­a')}
-              isActive={hourlyChartShift === 'DÃ­a'}
+              onClick={() => setHourlyChartShift('Día')}
+              isActive={hourlyChartShift === 'Dí­a'}
             >
-              DÃ­a
+              Dí­a
             </PillButton>
             <PillButton
               onClick={() => setHourlyChartShift('Noche')}
