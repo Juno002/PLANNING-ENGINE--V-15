@@ -26,6 +26,7 @@ export interface PersonMonthlySummary {
     tardanzas: number
     errores: number
     puntos: number
+    salesTotal: number
   }
 
   // Clasificación final
@@ -44,5 +45,6 @@ export interface MonthlySummary {
     ausencias: number
     tardanzas: number
     errores: number
+    totalSales: number
   }
 }

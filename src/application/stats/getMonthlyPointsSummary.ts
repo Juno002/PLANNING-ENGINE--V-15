@@ -15,6 +15,7 @@ export interface PayrollRow {
   errores: number
   otros: number
   total: number
+  salesTotal: number
 }
 
 export interface MonthlyPointsSummary {
@@ -34,7 +35,8 @@ const PUNITIVE_INCIDENTS: IncidentType[] = [
 export function getMonthlyPointsSummary(
   representatives: Representative[],
   incidents: Incident[],
-  month: string // YYYY-MM
+  month: string, // YYYY-MM
+  attribution?: import('@/domain/call-center-analysis/services/SalesAttributionService').SalesAttributionResult
 ): MonthlyPointsSummary {
   const incidentsForMonth = incidents.filter(
     i =>
@@ -52,6 +54,15 @@ export function getMonthlyPointsSummary(
         errores: 0,
         otros: 0,
         total: 0,
+        salesTotal: 0,
+      }
+
+      // Inject CC Sales from attribution
+      if (attribution) {
+        const agentStats = attribution.byAgent.find(a => a.agentName === rep.name);
+        if (agentStats) {
+          row.salesTotal = agentStats.totalValue;
+        }
       }
 
       incidentsForMonth
@@ -86,11 +97,13 @@ export function getMonthlyPointsSummary(
 
       return row
     })
-    
+
   const filterReps = (role: RepresentativeRole, shift: ShiftType) => {
-    return representatives.filter(
-      r => r.isActive !== false && (r.role ?? 'SALES') === role && r.baseShift === shift
-    )
+    return representatives
+      .filter(
+        r => r.isActive !== false && (r.role ?? 'SALES') === role && r.baseShift === shift
+      )
+      .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
   }
 
   return {

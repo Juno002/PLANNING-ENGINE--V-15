@@ -116,13 +116,26 @@ export function PlanView({
             style={{
               textAlign: 'center',
               cursor: 'pointer',
-              color: day.isSpecial ? '#b45309' : 'inherit',
+              color: day.kind === 'HOLIDAY' ? '#b45309' : 'inherit',
+              position: 'relative', // Relative positioning for the absolute dot
             }}
+            title={day.label}
             onClick={() => onEditDay(day)}
           >
             <div>{new Date(day.date + 'T12:00:00Z').toLocaleDateString('es-ES', { weekday: 'short' }).toUpperCase()}</div>
-            <div style={{ fontSize: '12px', fontWeight: 400 }}>
+            <div style={{ fontSize: '12px', fontWeight: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
               {day.date.split('-')[2]}
+              {/* Visual indicator for labeled days that are NOT holidays */}
+              {day.label && day.kind !== 'HOLIDAY' && (
+                <div
+                  style={{
+                    width: '4px',
+                    height: '4px',
+                    borderRadius: '50%',
+                    backgroundColor: '#3b82f6', // subtle blue dot
+                  }}
+                />
+              )}
             </div>
           </div>
         ))}

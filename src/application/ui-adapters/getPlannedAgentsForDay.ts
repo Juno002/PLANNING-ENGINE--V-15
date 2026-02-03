@@ -32,22 +32,21 @@ export interface PlannedAgent {
  * All filtering for operational lists MUST use this function.
  */
 export function getPlannedAgentsForDay(
-    weeklyPlan: WeeklyPlan,
+    agents: Representative[], // Changed from WeeklyPlan to direct list
     incidents: Incident[],
     date: ISODate,
     shift: ShiftType,
     allCalendarDays: DayInfo[],
-    representatives: Representative[],
     specialSchedules: SpecialSchedule[] = []
 ): PlannedAgent[] {
     const planned: PlannedAgent[] = []
 
-    // Ensure only valid agents from the plan are processed
-    if (!weeklyPlan?.agents) return []
+    // Ensure only valid active agents are processed
+    if (!agents) return []
 
-    for (const agent of weeklyPlan.agents) {
-        const repId = agent.representativeId
-        const representative = representatives.find(r => r.id === repId)
+    for (const representative of agents) {
+        const repId = representative.id
+        // const representative = representatives.find(r => r.id === repId) // No longer needed
 
         // 🛡️ DEFENSIVE: Skip if representative doesn't exist or is inactive
         // This handles historical data that may reference soft-deleted representatives

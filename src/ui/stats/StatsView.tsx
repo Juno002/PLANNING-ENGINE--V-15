@@ -5,8 +5,7 @@ import { StatsTabs, type StatsTab } from './StatsTabs'
 import { MonthlySummaryView } from './monthly/MonthlySummaryView'
 import { PointsReportView } from './reports/PointsReportView'
 import { OperationalReportView } from './reports/OperationalReportView'
-
-import Link from 'next/link' // Add import
+import { CallCenterAnalysisView } from './reports/CallCenterAnalysisView'
 
 export type ExtendedStatsTab = StatsTab | 'points' | 'executive' | 'analysis'
 
@@ -81,47 +80,7 @@ export function StatsView() {
         {activeTab === 'monthly' && <MonthlySummaryView />}
         {activeTab === 'points' && <PointsReportView />}
         {activeTab === 'executive' && <OperationalReportView />}
-        {activeTab === 'analysis' && (
-          <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '24px' }}>
-            <Link href="/operational" style={{ textDecoration: 'none' }}>
-              <div style={{
-                padding: '24px',
-                background: 'white',
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                transition: 'all 0.2s ease-in-out',
-                cursor: 'pointer',
-              }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)'
-                  e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)'
-                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                  <div style={{ background: '#eff6ff', padding: '8px', borderRadius: '8px', color: '#2563eb' }}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                  </div>
-                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#111827' }}>
-                    Análisis de Llamadas
-                  </h3>
-                </div>
-                <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#6b7280', lineHeight: '1.5' }}>
-                  Explora tendencias de volumen de llamadas, tiempos de respuesta y métricas operativas detalladas.
-                </p>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#2563eb', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  Abrir Dashboard <span style={{ fontSize: '16px' }}>→</span>
-                </div>
-              </div>
-            </Link>
-          </div>
-        )}
+        {activeTab === 'analysis' && <CallCenterAnalysisView />}
       </div>
     </div>
   )

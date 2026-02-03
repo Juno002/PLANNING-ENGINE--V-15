@@ -126,7 +126,9 @@ export function DailyLogView() {
     addIncident,
     showConfirm,
     pushUndo,
-    removeIncident
+    removeIncident,
+    dailyLogDate,
+    setDailyLogDate
   } = useAppStore(s => ({
     representatives: s.representatives,
     incidents: s.incidents,
@@ -137,10 +139,13 @@ export function DailyLogView() {
     addIncident: s.addIncident,
     showConfirm: s.showConfirm,
     pushUndo: s.pushUndo,
-    removeIncident: s.removeIncident
+    removeIncident: s.removeIncident,
+    dailyLogDate: s.dailyLogDate,
+    setDailyLogDate: s.setDailyLogDate
   }))
 
-  const [logDate, setLogDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const logDate = dailyLogDate
+  const setLogDate = setDailyLogDate
   const [filterMode, setFilterMode] = useState<'TODAY' | 'WEEK' | 'MONTH'>('TODAY')
   const [hideAbsent, setHideAbsent] = useState(false)
 
@@ -242,12 +247,12 @@ export function DailyLogView() {
     if (!activeWeeklyPlan) return []
 
     const plannedAgentsForShift = getPlannedAgentsForDay(
-      activeWeeklyPlan,
+      representatives, // Was activeWeeklyPlan
       incidents,
       logDate,
       activeShift,
       allCalendarDaysForRelevantMonths,
-      representatives,
+      // representatives, // Removed
       specialSchedules
     )
 
@@ -257,8 +262,8 @@ export function DailyLogView() {
       .map(p => repMap.get(p.representativeId))
       .filter((r): r is Representative =>
         !!r &&
-        r.isActive &&
-        !isSlotOperationallyEmpty(r.id, logDate, activeShift, incidents)
+        r.isActive
+        // !isSlotOperationallyEmpty(r.id, logDate, activeShift, incidents) // 🔧 FIX: Absences should be visible (strikethrough)
       )
   }, [
     isAdministrativeIncident,
@@ -563,12 +568,12 @@ export function DailyLogView() {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '300px 1fr',
-        height: 'calc(100vh - 200px)',
+        gridTemplateColumns: 'minmax(300px, 20%) 1fr', // Responsive width
         gap: 'var(--space-md)',
         fontFamily: 'sans-serif',
         background: 'var(--bg-app)',
         padding: 'var(--space-lg)',
+        alignItems: 'start', // Important for sticky
       }}
     >
       <aside
@@ -583,6 +588,10 @@ export function DailyLogView() {
           gap: 'var(--space-md)',
           marginBottom: 'var(--space-md)',
           boxShadow: 'var(--shadow-sm)',
+          position: 'sticky',
+          top: '80px', // Offset for sticky header
+          height: 'calc(100vh - 100px)', // Fit within viewport
+          overflowY: 'hidden', // Internal list handles scroll
         }}
       >
         <div>
@@ -778,6 +787,22 @@ export function DailyLogView() {
                       </span>
                     )}
 
+                    {/* 🎯 VISUALIZATION: Absent Badge */}
+                    {isAbsent && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          background: '#fee2e2',
+                          color: '#b91c1c',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontWeight: 600
+                        }}
+                      >
+                        Ausente
+                      </span>
+                    )}
+
                     {isCovering && (
                       <span
                         title={`Cubriendo a ${coveringName ?? '—'}`}
@@ -798,18 +823,6 @@ export function DailyLogView() {
                       </span>
                     )}
 
-                    {isAbsent && (
-                      <span style={{
-                        fontSize: '10px',
-                        background: '#fecaca',
-                        color: '#991b1b',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        fontWeight: 600
-                      }}>
-                        Ausente
-                      </span>
-                    )}
                   </div>
                 </button>
               )
@@ -823,7 +836,7 @@ export function DailyLogView() {
           display: 'flex',
           flexDirection: 'column',
           gap: '16px',
-          overflowY: 'auto',
+          // overflowY: 'auto', // REMOVED: Let window scroll
         }}
       >
         <div
@@ -1130,7 +1143,7 @@ export function DailyLogView() {
               overflowY: 'auto',
               marginBottom: 'var(--space-md)',
               boxShadow: 'var(--shadow-sm)',
-              maxHeight: 'calc(100vh - 200px)', // 🟢 Adjusted Dynamic Height
+              // maxHeight: 'calc(100vh - 200px)', // REMOVED: Caused clipping
             }}
           >
             <DailyEventsList

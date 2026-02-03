@@ -6,9 +6,13 @@ import {
   getMonthlyPointsSummary,
   PayrollRow,
 } from '@/application/stats/getMonthlyPointsSummary'
+import { useOperationalDashboardStore } from '@/store/useOperationalDashboardStore'
+import { formatCurrency } from '@/domain/call-center-analysis/utils/format'
 import { format, subMonths, addMonths } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Clipboard, ClipboardCheck, Download } from 'lucide-react'
+import { Clipboard, ClipboardCheck, Download, ListOrdered } from 'lucide-react'
+import { ReorderAgentsModal } from './components/ReorderAgentsModal'
+import { ShiftType } from '@/domain/types'
 
 const ReportHeader = ({
   monthLabel,
@@ -101,6 +105,7 @@ const ReportTable = ({
           valueOrBlank(row.ausencia),
           valueOrBlank(row.errores),
           valueOrBlank(row.otros),
+          row.salesTotal,
         ].join('\t')
       )
       .join('\n')
@@ -115,7 +120,7 @@ const ReportTable = ({
     textTransform: 'uppercase',
     borderBottom: '1px solid #e5e7eb',
   }
-  
+
   const cellStyle: React.CSSProperties = {
     padding: '10px 12px',
     borderTop: '1px solid #f3f4f6',
@@ -168,11 +173,12 @@ const ReportTable = ({
           <thead style={{ background: '#f9fafb' }}>
             <tr>
               <th style={tableHeaderStyle}>Empleado</th>
-              <th style={{...tableHeaderStyle, textAlign: 'right'}}>Tardanza</th>
-              <th style={{...tableHeaderStyle, textAlign: 'right'}}>Ausencia</th>
-              <th style={{...tableHeaderStyle, textAlign: 'right'}}>Errores</th>
-              <th style={{...tableHeaderStyle, textAlign: 'right'}}>Otros</th>
-              <th style={{...tableHeaderStyle, textAlign: 'right'}}>Total</th>
+              <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Tardanza</th>
+              <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Ausencia</th>
+              <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Errores</th>
+              <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Otros</th>
+              <th style={{ ...tableHeaderStyle, textAlign: 'right', color: '#6366f1' }}>Ventas</th>
+              <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -183,15 +189,16 @@ const ReportTable = ({
                 <td style={{ ...cellStyle, textAlign: 'right' }}>{row.ausencia > 0 ? row.ausencia : ''}</td>
                 <td style={{ ...cellStyle, textAlign: 'right' }}>{row.errores > 0 ? row.errores : ''}</td>
                 <td style={{ ...cellStyle, textAlign: 'right' }}>{row.otros > 0 ? row.otros : ''}</td>
+                <td style={{ ...cellStyle, textAlign: 'right', color: '#4f46e5', fontWeight: 600 }}>{row.salesTotal > 0 ? formatCurrency(row.salesTotal) : ''}</td>
                 <td style={{ ...cellStyle, textAlign: 'right', fontWeight: 700, color: row.total > 0 ? '#b91c1c' : '#1f2937' }}>{row.total}</td>
               </tr>
             ))}
             {data.length === 0 && (
-                <tr>
-                    <td colSpan={6} style={{...cellStyle, textAlign: 'center', color: '#9ca3af', fontStyle: 'italic'}}>
-                        No hay representantes en esta categoría.
-                    </td>
-                </tr>
+              <tr>
+                <td colSpan={6} style={{ ...cellStyle, textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}>
+                  No hay representantes en esta categoría.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -207,6 +214,10 @@ export function PointsReportView() {
     incidents: state.incidents,
   }))
   const [copiedTitle, setCopiedTitle] = useState<string | false>(false)
+  const [reorderModal, setReorderModal] = useState<{ isOpen: boolean; shift: ShiftType }>({
+    isOpen: false,
+    shift: 'DAY'
+  })
 
   const monthISO = useMemo(() => format(currentDate, 'yyyy-MM'), [currentDate])
   const monthLabel = useMemo(
@@ -215,14 +226,14 @@ export function PointsReportView() {
   )
 
   const summary = useMemo(
-    () => getMonthlyPointsSummary(representatives, incidents, monthISO),
+    () => getMonthlyPointsSummary(representatives, incidents, monthISO, useOperationalDashboardStore.getState().data.salesAttribution),
     [representatives, incidents, monthISO]
   )
-  
+
   const handleCopy = (text: string, title: string) => {
     navigator.clipboard.writeText(text).then(() => {
-        setCopiedTitle(title)
-        setTimeout(() => setCopiedTitle(false), 2500)
+      setCopiedTitle(title)
+      setTimeout(() => setCopiedTitle(false), 2500)
     })
   }
 
@@ -240,7 +251,46 @@ export function PointsReportView() {
         onPrev={() => setCurrentDate(m => subMonths(m, 1))}
         onNext={() => setCurrentDate(m => addMonths(m, 1))}
       />
-      
+
+      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => setReorderModal({ isOpen: true, shift: 'DAY' })}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '13px',
+            padding: '8px 12px',
+            background: 'white',
+            border: '1px solid var(--border-strong)',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            color: 'var(--text-main)'
+          }}
+        >
+          <ListOrdered size={16} /> Reordenar Turno Día
+        </button>
+        <button
+          onClick={() => setReorderModal({ isOpen: true, shift: 'NIGHT' })}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '13px',
+            padding: '8px 12px',
+            background: 'white',
+            border: '1px solid var(--border-strong)',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: 500,
+            color: 'var(--text-main)'
+          }}
+        >
+          <ListOrdered size={16} /> Reordenar Turno Noche
+        </button>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
         <ReportTable title="Ventas - Turno Día" data={summary.salesDay} onCopy={handleCopy} />
         <ReportTable title="Ventas - Turno Noche" data={summary.salesNight} onCopy={handleCopy} />
@@ -248,29 +298,36 @@ export function PointsReportView() {
         <ReportTable title="Servicio al Cliente - Turno Noche" data={summary.serviceNight} onCopy={handleCopy} />
       </div>
 
+      {reorderModal.isOpen && (
+        <ReorderAgentsModal
+          shift={reorderModal.shift}
+          isOpen={reorderModal.isOpen}
+          onClose={() => setReorderModal({ ...reorderModal, isOpen: false })}
+        />
+      )}
+
       {/* Copy Confirmation Toast */}
       {copiedTitle && (
         <div style={{
-            position: 'fixed',
-            bottom: '24px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            padding: '12px 24px',
-            background: '#1f2937',
-            color: 'white',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            zIndex: 100
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '12px 24px',
+          background: '#1f2937',
+          color: 'white',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          zIndex: 100
         }}>
-            <ClipboardCheck size={18} />
-            <span>
-              Matriz de puntos para "{copiedTitle}" copiada.
-            </span>
+          <ClipboardCheck size={18} />
+          <span>
+            Matriz de puntos para "{copiedTitle}" copiada.
+          </span>
         </div>
       )}
     </div>
   )
 }
-

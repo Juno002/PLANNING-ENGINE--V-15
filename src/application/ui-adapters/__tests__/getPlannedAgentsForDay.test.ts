@@ -49,23 +49,21 @@ describe('🛡️ HOSTILE TESTING: getPlannedAgentsForDay', () => {
 
         // 1. Query for DAY
         const dayAgents = getPlannedAgentsForDay(
-            mockWeeklyPlan,
+            [mockRepN], // transformed to direct agents list
             [], // no incidents
             '2026-01-05', // Monday
             'DAY',
             [], // calendar not used for basic calc
-            [mockRepN],
             [mixtoSchedule]
         )
 
         // 2. Query for NIGHT
         const nightAgents = getPlannedAgentsForDay(
-            mockWeeklyPlan,
+            [mockRepN],
             [],
             '2026-01-05',
             'NIGHT',
             [],
-            [mockRepN],
             [mixtoSchedule]
         )
 

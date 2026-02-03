@@ -29,12 +29,12 @@ export function getDailyShiftStats(
 
     // 1. Get Canonical Planned List
     const planned = getPlannedAgentsForDay(
-        weeklyPlan,
+        representatives, // Was weeklyPlan
         incidents,
         date,
         shift,
         allCalendarDays,
-        representatives,
+        // representatives, // Removed
         specialSchedules
     )
 

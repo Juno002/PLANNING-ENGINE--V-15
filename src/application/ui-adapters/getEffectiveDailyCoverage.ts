@@ -40,6 +40,12 @@ export function getEffectiveDailyCoverage(
 
     if (weeklyPlan && weeklyPlan.agents) {
         weeklyPlan.agents.forEach(agent => {
+            // 🛑 FIX: Filter out inactive agents to match UI list
+            // The plan includes all reps, but we only want to count active ones.
+            // We need to look up the rep definition.
+            const repDef = representatives.find(r => r.id === agent.representativeId)
+            if (!repDef || repDef.isActive === false) return
+
             const day = agent.days[date]
             if (!day) return
 

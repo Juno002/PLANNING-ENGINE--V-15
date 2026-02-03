@@ -59,6 +59,17 @@ function AppShellInner() {
 
   const [activeView, setActiveView] = useState<'PLANNING' | 'DAILY_LOG' | 'STATS' | 'SETTINGS'>('DAILY_LOG')
 
+  // 🧭 Navigation Listener
+  const navigationRequest = useAppStore(s => s.navigationRequest)
+  const clearNavigationRequest = useAppStore(s => s.clearNavigationRequest)
+
+  useEffect(() => {
+    if (navigationRequest) {
+      setActiveView(navigationRequest.view)
+      clearNavigationRequest()
+    }
+  }, [navigationRequest, clearNavigationRequest])
+
   // Pre-fetch the summary for the modal
   const monthlySummary = useMonthlySummary(detailModalState.month)
 

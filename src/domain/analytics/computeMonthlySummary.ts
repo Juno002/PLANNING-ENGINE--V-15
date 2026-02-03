@@ -72,6 +72,7 @@ export function computeMonthlySummary(
         ausencias: 0,
         tardanzas: 0,
         errores: 0,
+        salesTotal: 0,
       },
       riskLevel: 'ok',
     }
@@ -125,6 +126,7 @@ export function computeMonthlySummary(
     ausencias: 0,
     tardanzas: 0,
     errores: 0,
+    totalSales: 0,
   }
 
   finalByPerson.forEach(p => {
@@ -133,6 +135,7 @@ export function computeMonthlySummary(
     globalTotals.ausencias += p.totals.ausencias
     globalTotals.tardanzas += p.totals.tardanzas
     globalTotals.errores += p.totals.errores
+    globalTotals.totalSales += p.totals.salesTotal
   })
 
   return {

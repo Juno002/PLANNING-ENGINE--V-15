@@ -11,12 +11,61 @@ import { ManagerPlannerCell } from '@/ui/management/ManagerPlannerCell'
 import { resolveEffectiveManagerDay } from '@/application/ui-adapters/resolveEffectiveManagerDay'
 import { mapManagerDayToCell } from '@/application/ui-adapters/mapManagerDayToCell'
 import { EffectiveManagerDay } from '@/application/ui-adapters/types'
+import { calculateManagerLoad } from '@/domain/management/calculateManagerLoad'
 import { getDutyHours } from '@/domain/management/workload'
 
 // 🛡️ INSTITUTIONAL TRUTH: OPERATIONAL LOAD MODEL (HOURLY)
 // Carga Operativa = horas reales (con ajuste de fin de semana)
 
-export function ManagerScheduleManagement() {
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    verticalListSortingStrategy,
+    useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+interface ManagerScheduleManagementProps {
+    embedded?: boolean
+}
+
+// Helper for Sortable Row
+function SortableRow({ children, id }: { children: React.ReactNode, id: string }) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id })
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        position: 'relative' as const,
+        zIndex: isDragging ? 999 : 'auto',
+    }
+
+    return (
+        <tr ref={setNodeRef} style={style} {...attributes} {...listeners}>
+            {children}
+        </tr>
+    )
+}
+
+export function ManagerScheduleManagement({ embedded = false }: ManagerScheduleManagementProps) {
     const {
         managers,
         managementSchedules,
@@ -30,6 +79,7 @@ export function ManagerScheduleManagement() {
         planningAnchorDate,
         setPlanningAnchorDate,
         copyManagerWeek,
+        reorderManagers,
     } = useAppStore(s => ({
         managers: s.managers,
         managementSchedules: s.managementSchedules,
@@ -42,7 +92,8 @@ export function ManagerScheduleManagement() {
         clearManagerDuty: s.clearManagerDuty,
         planningAnchorDate: s.planningAnchorDate,
         setPlanningAnchorDate: s.setPlanningAnchorDate,
-        copyManagerWeek: s.copyManagerWeek
+        copyManagerWeek: s.copyManagerWeek,
+        reorderManagers: s.reorderManagers
     }))
 
     const { weekDays, label: weekLabel, handlePrevWeek, handleNextWeek } = useWeekNavigator(
@@ -103,55 +154,14 @@ export function ManagerScheduleManagement() {
 
     // 🛡️ FAIRNESS ENGINE: Calculate loads BEFORE rendering to enable team-wide analysis
     const managerLoads = React.useMemo(() => {
-        return managers
-            .filter(manager => {
-                const rep = representatives.find(r => r.id === manager.id)
-                return rep ? rep.isActive !== false : true
-            })
-            .map(manager => {
-                const representative = representatives.find(r => r.id === manager.id)
-                const weeklyPlan = managementSchedules[manager.id] || null
-
-                let totalHours = 0
-                let nightCount = 0
-                let weekendNightCount = 0
-
-                weekDays.forEach(day => {
-                    const effectiveDay = resolveEffectiveManagerDay(
-                        weeklyPlan,
-                        incidents,
-                        day.date,
-                        allCalendarDaysForRelevantMonths,
-                        representative
-                    )
-
-                    // We need to resolve the generic "duty" string from the effective day
-                    let duty: string | null = null
-                    if (effectiveDay.kind === 'DUTY') duty = effectiveDay.duty
-
-                    if (!duty) return
-
-                    const dayOfWeek = parseISO(day.date).getDay()
-                    const { hours } = getDutyHours(duty, dayOfWeek)
-
-                    totalHours += hours
-
-                    // Track structural metrics (still useful for silent sensor)
-                    if (duty === 'NIGHT') {
-                        nightCount++
-                        // Friday(5) or Saturday(6)
-                        if (dayOfWeek === 5 || dayOfWeek === 6) weekendNightCount++
-                    }
-                })
-
-                return {
-                    id: manager.id,
-                    name: manager.name,
-                    load: totalHours, // Now purely hours
-                    nightCount,
-                    weekendNightCount
-                }
-            })
+        return calculateManagerLoad(
+            managers,
+            managementSchedules,
+            incidents,
+            representatives,
+            weekDays,
+            allCalendarDaysForRelevantMonths
+        )
     }, [managers, managementSchedules, weekDays, incidents, representatives, allCalendarDaysForRelevantMonths])
 
     // 🛡️ STATISTICAL ANALYSIS (Internal Sensor)
@@ -251,46 +261,74 @@ export function ManagerScheduleManagement() {
         return contenders.length === 1 ? contenders[0].id : null
     }, [managerLoads])
 
+    // DnD Sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+
+        if (over && active.id !== over.id) {
+            const oldIndex = managerLoads.findIndex((m) => m.id === active.id);
+            const newIndex = managerLoads.findIndex((m) => m.id === over.id);
+
+            // Create new order
+            const newOrder = arrayMove(managerLoads.map(m => m.id), oldIndex, newIndex);
+            reorderManagers(newOrder);
+        }
+    };
+
     return (
-        <div style={{ background: 'var(--bg-app)', minHeight: '100vh', padding: 'var(--space-lg)' }}>
+        <div style={embedded ? { marginTop: 'var(--space-md)' } : { background: 'var(--bg-app)', minHeight: '100vh', padding: 'var(--space-lg)' }}>
             <div style={{ marginBottom: 'var(--space-lg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                    <h3 style={{ margin: '0 0 var(--space-xs) 0', fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--text-main)' }}>
-                        Horarios de Gerencia
-                    </h3>
-                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
-                        Planificación semanal con soporte para incidencias.
-                    </p>
-                </div>
+                {!embedded ? (
+                    <>
+                        <div>
+                            <h3 style={{ margin: '0 0 var(--space-xs) 0', fontSize: 'var(--font-size-lg)', fontWeight: 'var(--font-weight-semibold)', color: 'var(--text-main)' }}>
+                                Horarios de Gerencia
+                            </h3>
+                            <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
+                                Planificación semanal con soporte para incidencias.
+                            </p>
+                        </div>
 
-                {/* Time Sovereign */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                        {/* Time Sovereign */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
 
-                    {!isCurrentWeek && (
-                        <button
-                            onClick={() => setPlanningAnchorDate(format(new Date(), 'yyyy-MM-dd'))}
-                            style={{
-                                padding: '6px 12px',
-                                background: 'var(--bg-surface)',
-                                border: '1px solid var(--border-subtle)',
-                                borderRadius: 'var(--radius-md)',
-                                fontSize: 'var(--font-size-sm)',
-                                fontWeight: 'var(--font-weight-semibold)',
-                                color: 'var(--text-main)',
-                                cursor: 'pointer',
-                                boxShadow: 'var(--shadow-sm)'
-                            }}
-                        >
-                            Hoy
-                        </button>
-                    )}
+                            {!isCurrentWeek && (
+                                <button
+                                    onClick={() => setPlanningAnchorDate(format(new Date(), 'yyyy-MM-dd'))}
+                                    style={{
+                                        padding: '6px 12px',
+                                        background: 'var(--bg-surface)',
+                                        border: '1px solid var(--border-subtle)',
+                                        borderRadius: 'var(--radius-md)',
+                                        fontSize: 'var(--font-size-sm)',
+                                        fontWeight: 'var(--font-weight-semibold)',
+                                        color: 'var(--text-main)',
+                                        cursor: 'pointer',
+                                        boxShadow: 'var(--shadow-sm)'
+                                    }}
+                                >
+                                    Hoy
+                                </button>
+                            )}
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', background: 'var(--bg-surface)', padding: '6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
-                        <button onClick={handlePrevWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)' }}>&lt;</button>
-                        <span style={{ fontSize: 'var(--font-size-md)', fontWeight: 'var(--font-weight-semibold)', width: '220px', textAlign: 'center', color: 'var(--text-main)' }}>{weekLabel}</span>
-                        <button onClick={handleNextWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)' }}>&gt;</button>
-                    </div>
-                </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', background: 'var(--bg-surface)', padding: '6px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+                                <button onClick={handlePrevWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)' }}>&lt;</button>
+                                <span style={{ fontSize: 'var(--font-size-md)', fontWeight: 'var(--font-weight-semibold)', width: '220px', textAlign: 'center', color: 'var(--text-main)' }}>{weekLabel}</span>
+                                <button onClick={handleNextWeek} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 10px', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)' }}>&gt;</button>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    /* Spacer for embedded mode to push button to right if needed, or just standard flex behavior */
+                    <div />
+                )}
 
                 <div style={{ marginLeft: '12px' }}>
                     <button
@@ -314,182 +352,200 @@ export function ManagerScheduleManagement() {
 
             {/* Main Grid */}
             <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-card)', overflow: 'hidden', background: 'var(--bg-surface)', boxShadow: 'var(--shadow-md)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)' }}>
-                    <thead>
-                        <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
-                            <th style={{ textAlign: 'left', padding: 'var(--space-md)', color: 'var(--text-muted)', fontWeight: 'var(--font-weight-semibold)', width: '200px' }}>Supervisor</th>
-                            {weekDays.map(day => (
-                                <th key={day.date} style={{ textAlign: 'center', padding: 'var(--space-md) var(--space-sm)', color: 'var(--text-muted)', fontWeight: 'var(--font-weight-semibold)' }}>
-                                    <div>{format(parseISO(day.date), 'EEE', { locale: es })}</div>
-                                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-faint)', fontWeight: 'var(--font-weight-normal)' }}>{format(parseISO(day.date), 'd')}</div>
-                                </th>
-                            ))}
-                            <th style={{ width: '40px' }}></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {managerLoads
-                            .map((computedManager) => {
-                                // Find manager and plan again just for context if needed, or use computad manager data
-                                const manager = managers.find(m => m.id === computedManager.id)!
-                                const representative = representatives.find(r => r.id === manager.id)
-                                const weeklyPlan = managementSchedules[manager.id] || null
-                                const weeklyLoad = computedManager.load
-                                const isMostLoaded = mostLoadedManagerId === manager.id
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                >
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)' }}>
+                        <thead>
+                            <tr style={{ background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+                                <th style={{ width: '30px' }}></th> {/* Grip handle column */}
+                                <th style={{ textAlign: 'left', padding: 'var(--space-md)', color: 'var(--text-muted)', fontWeight: 'var(--font-weight-semibold)', width: '200px' }}>Supervisor</th>
+                                {weekDays.map(day => (
+                                    <th key={day.date} style={{ textAlign: 'center', padding: 'var(--space-md) var(--space-sm)', color: 'var(--text-muted)', fontWeight: 'var(--font-weight-semibold)' }}>
+                                        <div>{format(parseISO(day.date), 'EEE', { locale: es })}</div>
+                                        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-faint)', fontWeight: 'var(--font-weight-normal)' }}>{format(parseISO(day.date), 'd')}</div>
+                                    </th>
+                                ))}
+                                <th style={{ width: '40px' }}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <SortableContext
+                                items={managerLoads.map(m => m.id)}
+                                strategy={verticalListSortingStrategy}
+                            >
+                                {managerLoads
+                                    .map((computedManager) => {
+                                        // Find manager and plan again just for context if needed, or use computad manager data
+                                        const manager = managers.find(m => m.id === computedManager.id)!
+                                        // Safety check
+                                        if (!manager) return null;
 
-                                // Load Color Logic (Hourly Scale)
-                                // 🟢 <= 38: Normal
-                                // 🟡 39-44: Exigente
-                                // 🟠 45-50: Pesado
-                                // 🔴 > 50 : Estructuralmente cargado
-                                let loadColor = '#22c55e' // Green
-                                if (weeklyLoad > 38 && weeklyLoad <= 44) loadColor = '#eab308' // Yellow
-                                if (weeklyLoad > 44 && weeklyLoad <= 50) loadColor = '#f97316' // Orange
-                                if (weeklyLoad > 50) loadColor = '#ef4444' // Red
+                                        const representative = representatives.find(r => r.id === manager.id)
+                                        const weeklyPlan = managementSchedules[manager.id] || null
+                                        const weeklyLoad = computedManager.load
+                                        const isMostLoaded = mostLoadedManagerId === manager.id
 
-                                // Progress (capped visual scale at 55h)
-                                const progress = Math.min((weeklyLoad / 55) * 100, 100)
+                                        // Load Color Logic (Hourly Scale)
+                                        // 🟢 <= 38: Normal
+                                        // 🟡 39-44: Exigente
+                                        // 🟠 45-50: Pesado
+                                        // 🔴 > 50 : Estructuralmente cargado
+                                        let loadColor = '#22c55e' // Green
+                                        if (weeklyLoad > 38 && weeklyLoad <= 44) loadColor = '#eab308' // Yellow
+                                        if (weeklyLoad > 44 && weeklyLoad <= 50) loadColor = '#f97316' // Orange
+                                        if (weeklyLoad > 50) loadColor = '#ef4444' // Red
 
-                                return (
-                                    <tr key={manager.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                        <td style={{ padding: 'var(--space-sm) var(--space-md)', color: 'var(--text-main)', fontWeight: 'var(--font-weight-medium)' }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <div style={{ width: '24px', height: '24px', background: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
-                                                        <User size={14} />
-                                                    </div>
-                                                    {manager.name}
-                                                    {isMostLoaded && (
-                                                        <span
-                                                            title="Mayor carga horaria esta semana"
+                                        // Progress (capped visual scale at 55h)
+                                        const progress = Math.min((weeklyLoad / 55) * 100, 100)
+
+                                        return (
+                                            <SortableRow key={manager.id} id={manager.id}>
+                                                <td style={{ textAlign: 'center', color: 'var(--text-muted)', cursor: 'grab', touchAction: 'none' }}>
+                                                    ⋮ ::
+                                                </td>
+                                                <td style={{ padding: 'var(--space-sm) var(--space-md)', color: 'var(--text-main)', fontWeight: 'var(--font-weight-medium)', borderRight: '1px solid var(--border-subtle)' }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <div style={{ width: '24px', height: '24px', background: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
+                                                                <User size={14} />
+                                                            </div>
+                                                            {manager.name}
+                                                            {isMostLoaded && (
+                                                                <span
+                                                                    title="Mayor carga horaria esta semana"
+                                                                    style={{
+                                                                        fontSize: '11px',
+                                                                        color: '#9ca3af', // Gray-400 (polite)
+                                                                        marginLeft: '2px',
+                                                                        cursor: 'help'
+                                                                    }}
+                                                                >
+                                                                    ●
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Workload Meter */}
+                                                        <div
+                                                            title={`Carga horaria semanal: ${weeklyLoad.toFixed(1)} h\n\nIncluye duración real de turnos.\nNo mide desempeño ni productividad.\nUsado solo para balance de planificación.`}
                                                             style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
                                                                 fontSize: '11px',
-                                                                color: '#9ca3af', // Gray-400 (polite)
-                                                                marginLeft: '2px',
-                                                                cursor: 'help'
+                                                                color: '#6b7280',
+                                                                paddingLeft: '32px'
                                                             }}
                                                         >
-                                                            ●
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                {/* Workload Meter */}
-                                                <div
-                                                    title={`Carga horaria semanal: ${weeklyLoad.toFixed(1)} h\n\nIncluye duración real de turnos.\nNo mide desempeño ni productividad.\nUsado solo para balance de planificación.`}
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        fontSize: '11px',
-                                                        color: '#6b7280',
-                                                        paddingLeft: '32px'
-                                                    }}
-                                                >
-                                                    <div style={{ width: '60px', height: '4px', background: '#e5e7eb', borderRadius: '2px', overflow: 'hidden' }}>
-                                                        <div style={{ width: `${progress}%`, height: '100%', background: loadColor, transition: 'width 0.3s' }} />
+                                                            <div style={{ width: '60px', height: '4px', background: '#e5e7eb', borderRadius: '2px', overflow: 'hidden' }}>
+                                                                <div style={{ width: `${progress}%`, height: '100%', background: loadColor, transition: 'width 0.3s' }} />
+                                                            </div>
+                                                            <span style={{ fontWeight: 500 }}>{Number(weeklyLoad.toFixed(1))}h</span>
+                                                        </div>
                                                     </div>
-                                                    <span style={{ fontWeight: 500 }}>{Number(weeklyLoad.toFixed(1))}h</span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        {weekDays.map(day => {
-                                            const effectiveDay = resolveEffectiveManagerDay(
-                                                weeklyPlan,
-                                                incidents,
-                                                day.date,
-                                                allCalendarDaysForRelevantMonths,
-                                                representative
-                                            )
-
-                                            const cellState = mapManagerDayToCell(effectiveDay, manager.name)
-
-                                            // Determine current value for selector
-                                            // We need to re-derive this because we are inside render now
-                                            let currentValue = 'EMPTY'
-                                            if (effectiveDay.kind === 'DUTY') currentValue = effectiveDay.duty
-                                            else if (effectiveDay.kind === 'OFF') currentValue = 'OFF'
-                                            else if (effectiveDay.kind === 'EMPTY') currentValue = 'EMPTY'
-
-                                            const isEditable = cellState.isEditable && effectiveDay.kind !== 'VACATION' && effectiveDay.kind !== 'LICENSE'
-
-                                            return (
-                                                <td key={day.date} style={{ padding: '6px' }}>
-                                                    <ManagerPlannerCell
-                                                        state={cellState.state}
-                                                        label={cellState.label}
-                                                        tooltip={cellState.tooltip}
-                                                        currentValue={currentValue}
-                                                        onChange={isEditable ? (val) => handleDutyChange(manager.id, day.date, val) : undefined}
-                                                    />
                                                 </td>
-                                            )
-                                        })}
-                                        <td style={{ padding: '0 8px', textAlign: 'center' }}>
-                                            <button
-                                                onClick={() => removeManager(manager.id)}
-                                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#fee2e2' }}
-                                                title="Eliminar"
-                                            >
-                                                <Trash2 size={16} color="#ef4444" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                )
-                            })}
-                        {managers.length === 0 && (
-                            <tr>
-                                <td colSpan={9} style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                    No hay supervisores registrados. Añade uno abajo.
-                                </td>
-                            </tr>
-                        )}
+                                                {weekDays.map(day => {
+                                                    const effectiveDay = resolveEffectiveManagerDay(
+                                                        weeklyPlan,
+                                                        incidents,
+                                                        day.date,
+                                                        allCalendarDaysForRelevantMonths,
+                                                        representative
+                                                    )
 
-                        {/* Add Row */}
-                        <tr style={{ background: 'var(--bg-subtle)' }}>
-                            <td style={{ padding: 'var(--space-md)' }}>
-                                <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                                    <input
-                                        placeholder="Nuevo Supervisor..."
-                                        value={newManagerName}
-                                        onChange={(e) => setNewManagerName(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleCreateManager()}
-                                        style={{
-                                            border: '1px solid var(--border-subtle)',
-                                            borderRadius: 'var(--radius-md)',
-                                            padding: 'var(--space-sm)',
-                                            fontSize: 'var(--font-size-base)',
-                                            flex: 1,
-                                            outline: 'none',
-                                            background: 'var(--bg-surface)',
-                                            color: 'var(--text-main)'
-                                        }}
-                                    />
-                                    <button
-                                        onClick={handleCreateManager}
-                                        disabled={!newManagerName.trim()}
-                                        style={{
-                                            background: 'var(--success)',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: 'var(--radius-md)',
-                                            width: '32px',
-                                            height: '32px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            cursor: 'pointer',
-                                            opacity: !newManagerName.trim() ? 0.5 : 1
-                                        }}
-                                    >
-                                        <Plus size={16} />
-                                    </button>
-                                </div>
-                            </td>
-                            <td colSpan={8}></td>
-                        </tr>
-                    </tbody>
-                </table>
+                                                    const cellState = mapManagerDayToCell(effectiveDay, manager.name)
+
+                                                    // Determine current value for selector
+                                                    // We need to re-derive this because we are inside render now
+                                                    let currentValue = 'EMPTY'
+                                                    if (effectiveDay.kind === 'DUTY') currentValue = effectiveDay.duty
+                                                    else if (effectiveDay.kind === 'OFF') currentValue = 'OFF'
+                                                    else if (effectiveDay.kind === 'EMPTY') currentValue = 'EMPTY'
+
+                                                    const isEditable = cellState.isEditable && effectiveDay.kind !== 'VACATION' && effectiveDay.kind !== 'LICENSE'
+
+                                                    return (
+                                                        <td key={day.date} style={{ padding: '6px' }}>
+                                                            <ManagerPlannerCell
+                                                                state={cellState.state}
+                                                                label={cellState.label}
+                                                                tooltip={cellState.tooltip}
+                                                                currentValue={currentValue}
+                                                                onChange={isEditable ? (val) => handleDutyChange(manager.id, day.date, val) : undefined}
+                                                            />
+                                                        </td>
+                                                    )
+                                                })}
+                                                <td style={{ padding: '0 8px', textAlign: 'center' }}>
+                                                    <button
+                                                        onClick={() => removeManager(manager.id)}
+                                                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#fee2e2' }}
+                                                        title="Eliminar"
+                                                    >
+                                                        <Trash2 size={16} color="#ef4444" />
+                                                    </button>
+                                                </td>
+                                            </SortableRow>
+                                        )
+                                    })}
+                            </SortableContext>
+                            {managers.length === 0 && (
+                                <tr>
+                                    <td colSpan={10} style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                        No hay supervisores registrados. Añade uno abajo.
+                                    </td>
+                                </tr>
+                            )}
+
+                            {/* Add Row */}
+                            <tr style={{ background: 'var(--bg-subtle)' }}>
+                                <td style={{ padding: 'var(--space-md)' }} colSpan={2}>
+                                    <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
+                                        <input
+                                            placeholder="Nuevo Supervisor..."
+                                            value={newManagerName}
+                                            onChange={(e) => setNewManagerName(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleCreateManager()}
+                                            style={{
+                                                border: '1px solid var(--border-subtle)',
+                                                borderRadius: 'var(--radius-md)',
+                                                padding: 'var(--space-sm)',
+                                                fontSize: 'var(--font-size-base)',
+                                                flex: 1,
+                                                outline: 'none',
+                                                background: 'var(--bg-surface)',
+                                                color: 'var(--text-main)'
+                                            }}
+                                        />
+                                        <button
+                                            onClick={handleCreateManager}
+                                            disabled={!newManagerName.trim()}
+                                            style={{
+                                                background: 'var(--success)',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: 'var(--radius-md)',
+                                                width: '32px',
+                                                height: '32px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                cursor: 'pointer',
+                                                opacity: !newManagerName.trim() ? 0.5 : 1
+                                            }}
+                                        >
+                                            <Plus size={16} />
+                                        </button>
+                                    </div>
+                                </td>
+                                <td colSpan={8}></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </DndContext>
             </div>
         </div>
     )

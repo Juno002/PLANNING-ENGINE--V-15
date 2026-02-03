@@ -21,11 +21,9 @@ import { LogViewerModal } from '../components/LogViewerModal'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-import { Briefcase } from 'lucide-react'
-import { ManagerScheduleManagement } from './ManagerScheduleManagement'
 import { AuditPanel } from '@/ui/audit/AuditPanel'
 
-type SettingsTab = 'equipo' | 'calendario' | 'sistema' | 'gerencia'
+type SettingsTab = 'equipo' | 'calendario' | 'sistema'
 type EquipoSection = 'representatives' | 'demand'
 
 export function SettingsView() {
@@ -207,13 +205,6 @@ export function SettingsView() {
           Equipo y Reglas
         </button>
         <button
-          style={tabStyle(activeTab === 'gerencia')}
-          onClick={() => setActiveTab('gerencia')}
-        >
-          <Briefcase size={16} />
-          Gerencia
-        </button>
-        <button
           style={tabStyle(activeTab === 'calendario')}
           onClick={() => setActiveTab('calendario')}
         >
@@ -277,9 +268,6 @@ export function SettingsView() {
           </div>
         )}
 
-        {activeTab === 'gerencia' && (
-          <ManagerScheduleManagement />
-        )}
 
         {activeTab === 'calendario' && (
           <HolidayManagement />

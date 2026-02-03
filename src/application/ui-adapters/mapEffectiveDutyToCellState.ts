@@ -127,7 +127,7 @@ export function mapEffectiveDutyToCellState(
     }
 
     // 🟢 FERIADO TRABAJADO
-    if (day.isSpecial) {
+    if (day.kind === 'HOLIDAY') {
         return {
             variant: 'HOLIDAY',
             label: 'FER',
